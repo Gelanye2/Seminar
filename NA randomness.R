@@ -5,9 +5,6 @@ library(ggplot2)
 SubmissionFormat <- read_excel("~/Downloads/Seminar/Data/SubmissionFormat.xlsx")
 test_set_values <- read_excel("~/Downloads/Seminar/Data/Test set values.xlsx")
 training_set_labels <- read_excel("~/Downloads/Seminar/Data/Training set labels.xlsx")
-colnames(training_set_labels) <- as.character(training_set_labels[1, ])
-data <- training_set_labels[-1, ]
-
 training_set_values <- read_excel("~/Downloads/Seminar/Data/training set values.xlsx", skip = 1)
 
 combined_data <- merge(training_set_values, training_set_labels, by = "id")
@@ -53,8 +50,7 @@ t.test(combined_data$population ~ combined_data$installer_missing)
 t.test(combined_data$gps_height ~ combined_data$installer_missing)
 t.test(combined_data$construction_year ~ combined_data$installer_missing)
 
-######### 2.dependence of longitude and latitude
-library(ggplot2)
+######### 2.relationship with longitude and latitude
 df_clean <- combined_data %>%
   filter(!is.na(longitude), !is.na(latitude))
 
@@ -100,7 +96,7 @@ t.test(combined_data$population ~ combined_data$funder_missing)
 t.test(combined_data$gps_height ~ combined_data$funder_missing)
 t.test(combined_data$construction_year ~ combined_data$funder_missing)
 
-######### 2.dependence of longitude and latitude
+######### 2.relationship with longitude and latitude
 ggplot(combined_data, aes(x = longitude, y = latitude, color = funder_missing)) +
   geom_point(alpha = 0.5) +
   theme_minimal()
@@ -142,7 +138,7 @@ sorted_results_3[sorted_results_3 > 0.05]
 t.test(combined_data$population ~ combined_data$gps_missing)
 t.test(combined_data$construction_year ~ combined_data$gps_missing)
 
-######### 2.dependence of longitude and latitude
+######### 2.relationship with longitude and latitude
 ggplot(combined_data, aes(x = longitude, y = latitude, color = gps_missing)) +
   geom_point(alpha = 0.5) +
   theme_minimal()
@@ -185,7 +181,7 @@ sorted_results_4[sorted_results_4 > 0.05]
 t.test(combined_data$population ~ combined_data$construction_year_missing)
 t.test(combined_data$gps_height ~ combined_data$construction_year_missing)
 
-######### 2.dependence of longitude and latitude
+######### 2.relationship with longitude and latitude
 ggplot(combined_data, aes(x = longitude, y = latitude, color = construction_year_missing)) +
   geom_point(alpha = 0.5) +
   theme_minimal()
@@ -227,7 +223,7 @@ t.test(combined_data$gps_height ~ combined_data$population_missing)
 t.test(combined_data$construction_year ~ combined_data$population_missing)
 
 
-######### 2.dependence of longitude and latitude
+######### 2.relationship with longitude and latitude
 ggplot(combined_data, aes(x = longitude, y = latitude, color = population_missing)) +
   geom_point(alpha = 0.5) +
   theme_minimal()
