@@ -24,14 +24,13 @@ set.seed(2025)
 data_cls <<- data_all_clean
 data_cls$funder <- clean_func(data_cls$funder)
 data_cls$installer <- clean_func(data_cls$installer)
-data_cls <- data_cls %>% select(-district_code, -region_district, -subvillage,
-                                -longitude, -latitude, -ward, -lga, -region_code,
-                                -waterpoint_type_group)
+data_cls <- data_cls %>% select(-region, -district_code, -subvillage,
+                                -longitude, -latitude, -ward, -lga, -region_district)
 
 df_train <- data_cls %>% filter(dataset == "train")
 df_test <- data_cls %>% filter(dataset == "test")
 
-# --- 1. Cleaning function ---
+# --- 1. Cleaning function ----
 # Trim, lowercase, coerce to character; set missing‐like values to NA; standardize unknowns
 # --- Clean individual entries ----
 clean_func <- function(x) {
@@ -40,11 +39,11 @@ clean_func <- function(x) {
   x <- trimws(tolower(as.character(x)))
   
   # Identify missing-like values and set them to NA
-  is_missing   <- x %in% c("", " ", "na", "null", "none") | is.na(x)
+  is_missing   <- x %in% c("", " ", "na", "null", "none", "n/a") | is.na(x)
   x[is_missing] <- NA
   
   # Identify unknown-like values and standardize to "unknown"
-  is_unknown   <- x %in% c("unknown", "not known", "n/a", "_unknown", "0")
+  is_unknown   <- x %in% c("unknown", "not known", "_unknown", "0")
   x[is_unknown] <- "unknown" 
   
   return(x)
@@ -361,4 +360,4 @@ df_combined$funder <- group_rare(df_combined$funder,
                                  min_freq = 20, other_label = "other")
 df_combined$installer <- group_rare(df_combined$installer, 
                                  min_freq = 20, other_label = "other")
-
+saveRDS(df_combined, "data/df_combined.rds")
