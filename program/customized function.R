@@ -49,7 +49,6 @@ missingness_map <- function(data, missing_col_name, title = "") {
   filter(longitude != 0 & latitude != 0)
   ggplot(data, aes(x = longitude, y = latitude, color = .data[[missing_col_name]])) +
     geom_point(alpha = 0.5) +
-    theme_minimal() +
     labs(title = title)
 }
 
