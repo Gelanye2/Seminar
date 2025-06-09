@@ -140,7 +140,8 @@ data_all_clean <- data_all_clean %>%
 cols_remove <- c("id", "quantity_group", "recorded_by",
                  "amount_tsh", "wpt_name", "num_private", "extraction_type_class",
                  "extraction_type_group", "management_group", "payment",
-                 "quality_group", "source_class", "source_type", "scheme_name", "construction_year")
+                 "quality_group", "source_class", "source_type", "scheme_name", 
+                 "construction_year", "waterpoint_type_group")
 data_all_clean <- data_all_clean %>% select(-all_of(cols_remove))
 
 

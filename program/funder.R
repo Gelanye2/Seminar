@@ -1,13 +1,28 @@
 library(readr)
 library(cluster)
 library(clusterCrit)
-train_data <- readRDS("data/train_all_clean.rds")
-data_clean <- readRDS("data/data_all_clean.rds")
-train_data$funder_clean <- clean_func(train_data$funder)
-train_data$installer_clean <- clean_func(train_data$installer)
 
-data_clean$funder_clean <- clean_func(data_clean$funder)
-data_clean$installer_clean <- clean_func(data_clean$installer)
+data_all_clean <- readRDS("data/data_all_clean.rds")
+data_clean <<- data_all_clean
+# --- Clean individual entries ----
+clean_func <- function(x) {
+  
+  # Trim whitespace, convert to lowercase, and coerce to character
+  x <- trimws(tolower(as.character(x)))
+  
+  # Identify missing-like values and set them to NA
+  is_missing   <- x %in% c("", " ", "na", "null", "none", "n/a") | is.na(x)
+  x[is_missing] <- NA
+  
+  # Identify unknown-like values and standardize to "unknown"
+  is_unknown   <- x %in% c("unknown", "not known", "_unknown", "0")
+  x[is_unknown] <- "unknown" 
+  
+  return(x)
+}
+
+data_clean$funder <- clean_func(data_clean$funder)
+data_clean$installer <- clean_func(data_clean$installer)
 
 # --- Evaluation ----
 evaluate_string_clustering <- function(string_vec, thresholds = seq(0.05, 1.0, by = 0.01)) {
@@ -57,11 +72,10 @@ evaluate_string_clustering <- function(string_vec, thresholds = seq(0.05, 1.0, b
   return(result_df)
 }
 
-result_df <- evaluate_string_clustering(train_data$funder_clean)
-result_installer <- evaluate_string_clustering(train_data$installer_clean)
-
-data_funder <- evaluate_string_clustering(data_clean$funder_clean)
-data_installer <- evaluate_string_clustering(data_clean$installer_clean)
+data_funder <- evaluate_string_clustering(data_clean$funder)
+data_installer <- evaluate_string_clustering(data_clean$installer)
+best_thres_f   <- data_funder$threshold[which.max(data_funder$silhouette)]
+best_thres_i   <- data_installer$threshold[which.max(data_installer$silhouette)]
 
 plot_string_clustering <- function(result_df) {
   # Compute best‐Silhouette threshold
@@ -119,9 +133,6 @@ plot_string_clustering <- function(result_df) {
   p1 + p2 + plot_layout(ncol = 2)
 }
 
-plot_string_clustering(result_df)
-plot_string_clustering(result_installer)
-
 plot_string_clustering(data_funder)
 plot_string_clustering(data_installer)
 
@@ -173,33 +184,23 @@ group_similar_categories <- function(data, column, sim_threshold = 0.2, new_col 
   return(data)
 }
 
-train_data <- group_similar_categories(
-  data = train_data,
-  column = "funder_clean",
-  sim_threshold = 0.28
+data_clean <- group_similar_categories(
+  data = data_clean,
+  column = "funder",
+  sim_threshold = best_thres_f
 )
-n_distinct(train_data$funder_clean_grouped)
-
-train_data <- group_similar_categories(
-  data = train_data,
-  column = "installer_clean",
-  sim_threshold = 0.23
-)
-n_distinct(train_data$installer_clean_grouped)
+n_distinct(data_clean$funder_grouped)
+data_clean$funder <- data_clean$funder_grouped
+data_clean$funder_grouped <- NULL
 
 data_clean <- group_similar_categories(
   data = data_clean,
-  column = "funder_clean",
-  sim_threshold = 0.29
+  column = "installer",
+  sim_threshold = best_thres_i
 )
-n_distinct(data_clean$funder_clean_grouped)
-
-data_clean <- group_similar_categories(
-  data = data_clean,
-  column = "installer_clean",
-  sim_threshold = 0.23
-)
-n_distinct(data_clean$installer_clean_grouped)
+n_distinct(data_clean$installer_grouped)
+data_clean$installer <- data_clean$installer_grouped
+data_clean$installer_grouped <- NULL
 
 # --- Assign categories based on keyword patterns ----
 keyword_map <- list(
@@ -268,17 +269,11 @@ assign_by_keywords <- function(vec, keyword_map) {
   return(result)
 }
 
-train_data$funder_assign <- assign_by_keywords(train_data$funder_clean_grouped, keyword_map)
-n_distinct(train_data$funder_assign)
+data_clean$funder <- assign_by_keywords(data_clean$funder, keyword_map)
+n_distinct(data_clean$funder)
 
-train_data$installer_assign <- assign_by_keywords(train_data$installer_clean_grouped, keyword_map)
-n_distinct(train_data$installer_assign)
-
-data_clean$funder_assign <- assign_by_keywords(data_clean$funder_clean_grouped, keyword_map)
-n_distinct(data_clean$funder_assign)
-
-data_clean$installer_assign <- assign_by_keywords(data_clean$installer_clean_grouped, keyword_map)
-n_distinct(data_clean$installer_assign)
+data_clean$installer <- assign_by_keywords(data_clean$installer, keyword_map)
+n_distinct(data_clean$installer)
 
 # --- Recode rare categories as 'Other' ----
 group_rare <- function(x, min_freq = 20, other_label = "Other") {
@@ -299,20 +294,13 @@ group_rare <- function(x, min_freq = 20, other_label = "Other") {
   factor(x_recoded, levels = levels_final)
 }
 
-train_data$funder_grouped <- group_rare(train_data$funder_assign,
-                                      min_freq = 20, other_label = "Other")
-
-train_data$installer_grouped <- group_rare(train_data$installer_assign,
+data_clean$funder <- group_rare(data_clean$funder,
                                         min_freq = 20, other_label = "Other")
 
-n_distinct(train_data$funder_grouped)
-n_distinct(train_data$installer_grouped)
-
-data_clean$funder_grouped <- group_rare(data_clean$funder_assign,
-                                        min_freq = 20, other_label = "Other")
-
-data_clean$installer_grouped <- group_rare(data_clean$installer_assign,
+data_clean$installer <- group_rare(data_clean$installer,
                                            min_freq = 20, other_label = "Other")
 
-n_distinct(data_clean$funder_grouped)
-n_distinct(data_clean$installer_grouped)
+n_distinct(data_clean$funder)
+n_distinct(data_clean$installer)
+
+saveRDS(data_clean, "data/fi_clean.rds")
