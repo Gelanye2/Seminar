@@ -86,7 +86,7 @@ table_outliers <- data_all_clean %>%
 
 
 ###cleaning other columns
-#contributed by Yuxin Liu Coedited by: Haoran Ju
+#contributed by Yuxin Liu
 data_all_clean <- data_all_clean %>%
   mutate(
     year_recorded = as.integer(format(date_recorded, "%Y")),
