@@ -127,4 +127,54 @@ task_dropped <- TaskClassif$new(
 rr_drop <- resample(task_dropped, learner, rsmp("holdout"))
 rr_drop$aggregate()
 
+points_sf <- data_all_buffer %>%
+  filter(longitude != 0, latitude != 0) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326) %>%
+  st_transform(32736)
+
+####grid methods for neighborhood
+#create 1km grid
+grid_1km <- st_make_grid(points_sf, cellsize = 1000, square = TRUE) %>%
+  st_sf(grid_id = 1:length(.))
+
+#involve the point into the grid
+points_with_grid <- st_join(points_sf, grid_1km, join = st_within)
+
+#mark if the point is functional or not
+points_with_grid$func_flag <- data_all_buffer$status_group[
+  which(data_all_buffer$longitude != 0 & data_all_buffer$latitude != 0)
+] == "functional"
+
+grid_stats <- points_with_grid %>%
+  group_by(grid_id) %>%
+  summarise(
+    grid_func_ratio = mean(func_flag, na.rm = TRUE),
+    grid_point_count = n()
+  )
+
+#contain neighborhood information into origin dataset
+grid_stats_df <- grid_stats %>% st_drop_geometry()
+points_with_grid <- left_join(points_with_grid, grid_stats_df, by = "grid_id")
+data_all_buffer$grid_func_ratio_1k <- NA_real_
+valid_rows <- which(data_all_buffer$longitude != 0 & data_all_buffer$latitude != 0)
+data_all_buffer$grid_func_ratio_1k[valid_rows] <- points_with_grid$grid_func_ratio
+data_all_buffer$grid_point_count_1k <- NA_integer_
+data_all_buffer$grid_point_count_1k[valid_rows] <- points_with_grid$grid_point_count
+
+#Add count and smoothed data
+alpha <- 1
+beta <- 2
+smooth_rows <- !is.na(data_all_buffer$grid_func_ratio_1k) &
+  !is.na(data_all_buffer$grid_point_count_1k)
+
+func_count <- data_all_buffer$grid_func_ratio_1k[smooth_rows] *
+  data_all_buffer$grid_point_count_1k[smooth_rows]
+
+total_count <- data_all_buffer$grid_point_count_1k[smooth_rows]
+
+data_all_buffer$grid_func_ratio_smooth_1k <- NA_real_
+data_all_buffer$grid_func_ratio_smooth_1k[smooth_rows] <-
+  (func_count + alpha) / (total_count + beta)
+
+
 
