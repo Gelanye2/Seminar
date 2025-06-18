@@ -81,7 +81,7 @@ impute_graph <-
   imp_funder
 
 #
-base_learner <- lrn("classif.rpart")
+base_learner <- lrn("classif.ranger", predict_type = "prob")
 graph <- impute_graph %>>% base_learner
 graph_learner = as_learner(graph)
 #run 3fold cv
@@ -125,7 +125,7 @@ task <- TaskClassif$new(
   target = "status_group"
 )
 #
-learner <- lrn("classif.rpart")
+learner <- lrn("classif.ranger", predict_type = "prob")
 rr <- resample(task, learner, rsmp("cv", folds = 3))
 rr$aggregate()
 
@@ -152,7 +152,7 @@ task <- TaskClassif$new(
   target = "status_group"
 )
 #
-learner <- lrn("classif.rpart")
+learner <- lrn("classif.ranger", predict_type = "prob")
 rr <- resample(task, learner, rsmp("cv", folds = 3))
 rr$aggregate()
 
@@ -169,6 +169,6 @@ task <- TaskClassif$new(
   target = "status_group"
 )
 #
-learner <- lrn("classif.rpart")
+learner <- lrn("classif.ranger", predict_type = "prob")
 rr <- resample(task, learner, rsmp("cv", folds = 3))
 rr$aggregate()
