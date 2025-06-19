@@ -109,6 +109,7 @@ train_model_copy <- train_model_copy %>%
   mutate(
     population = replace_na(population, median(population, na.rm = TRUE)),
     years_in_use = replace_na(years_in_use, median(years_in_use, na.rm = TRUE)),
+    gps_height = replace_na(gps_height, median(gps_height, na.rm = TRUE)),
     scheme_management = replace_na(scheme_management, get_mode(scheme_management)),
     public_meeting = as.factor(public_meeting),
     public_meeting = replace_na(public_meeting, get_mode(public_meeting)),
@@ -116,6 +117,7 @@ train_model_copy <- train_model_copy %>%
     permit = replace_na(permit, get_mode(permit)),
     installer = replace_na(installer, get_mode(installer)),
     funder = replace_na(funder, get_mode(funder)),
+    gps_height = replace_na(gps_height, median(gps_height, na.rm = TRUE)),
     across(where(is.character), as.factor))
 
 #create task
@@ -136,6 +138,7 @@ train_model_copy <-train_model_copy %>%
   mutate(
     population = replace_na(population, mean(population, na.rm = TRUE)),
     years_in_use = replace_na(years_in_use, mean(years_in_use, na.rm = TRUE)),
+    gps_height = replace_na(gps_height, mean(gps_height, na.rm = TRUE)),
     scheme_management = replace_na(scheme_management, as.factor("unknown")),
     public_meeting = as.factor(public_meeting),
     public_meeting = replace_na(public_meeting, "FALSE"),
