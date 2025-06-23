@@ -2,6 +2,8 @@
 ###Contributed by: Haoran Ju
 source("setup.R")
 set.seed(7832)
+###Contributed by: Haoran Ju, Gelan Ye
+
 data_all <- readRDS("data/data_all.rds")
 
 ###initial reason for imputing coordinates
@@ -241,14 +243,71 @@ colnames(data_all_clean)
 cols_remove <- c("id", "quantity_group", "recorded_by",
                  "amount_tsh", "wpt_name", "num_private", "extraction_type_class",
                  "extraction_type_group", "management_group", "payment",
-                 "quality_group", "source_class", "source_type", "scheme_name", 
+                 "quality_group", "source_class", "source_type", "scheme_name",
                  "construction_year", "waterpoint_type_group")
+
 data_all_clean <- data_all_clean %>% select(-all_of(cols_remove))
 
+# keep only gps height > 0
+data_all_clean <- data_all_clean %>%
+  mutate(gps_height = ifelse(gps_height <= 0, NA, gps_height))
+
+train_all_clean <- data_all_clean %>% filter(dataset == "train")
+
+###### Clean the duplicate rows
+## for train dataset
+# 1. Identify all duplicate coordinates in original data
+duplicates_raw <- train_all_clean %>%
+  filter(longitude != 0 & latitude != 0) %>%
+  group_by(longitude, latitude) %>%
+  filter(n() > 1) %>%
+  ungroup()
+
+# 2. Clean
+duplicates_cleaned <- duplicates_raw %>%
+  distinct() %>%
+  group_by(longitude, latitude) %>%
+  filter(!(n() > 1 & (is.na(gps_height) & population == 0))) %>%
+  filter(!(n() > 1 & is.na(permit))) %>%
+  ungroup()
+
+# 3. Remove all duplicated coordinate rows from original
+train_all_clean <- train_all_clean %>%
+  anti_join(duplicates_raw, by = c("longitude", "latitude"))
+
+# 4. Add back the cleaned version
+train_all_clean <- bind_rows(train_all_clean, duplicates_cleaned)
+
+## for test dataset
+test_all_clean <- data_all_clean %>% filter(dataset == "test")
+# Add row index to identify original rows
+test_all_clean <- test_all_clean %>%
+  mutate(row_index = row_number())
+
+# Find duplicated rows (by coordinates)
+duplicates_raw_test <- test_all_clean %>%
+  filter(longitude != 0 & latitude != 0) %>%
+  group_by(longitude, latitude) %>%
+  filter(n() > 1) %>%
+  ungroup() %>%
+  arrange(longitude, latitude)
+
+# replace row 1 with row 2, and row 8 with row 7
+row1_index <- duplicates_raw_test$row_index[1]
+row2_index <- duplicates_raw_test$row_index[2]
+row7_index <- duplicates_raw_test$row_index[7]
+row8_index <- duplicates_raw_test$row_index[8]
+
+# Overwrite in the original dataset using row_index
+test_all_clean[row1_index, ] <- test_all_clean[row2_index, ]
+test_all_clean[row8_index, ] <- test_all_clean[row7_index, ]
+test_all_clean <- test_all_clean %>%
+  select(-row_index)  # Remove the row_index column
+
+data_all_clean <- bind_rows(train_all_clean, test_all_clean)
 
 ######save the cleaned dataset
-train_all_clean <- data_all_clean %>% filter(dataset == "train")
-test_all_clean <- data_all_clean %>% filter(dataset == "test")
 saveRDS(data_all_clean, "data/data_all_clean.rds")
 saveRDS(train_all_clean, "data/train_all_clean.rds")
 saveRDS(test_all_clean, "data/test_all_clean.rds")
+
