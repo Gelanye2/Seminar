@@ -1,6 +1,4 @@
-library(readr)
-library(cluster)
-library(clusterCrit)
+source("setup.R")
 
 data_all_clean <- readRDS("data/data_all_clean.rds")
 data_clean <<- data_all_clean
@@ -37,7 +35,8 @@ evaluate_string_clustering <- function(string_vec, thresholds = seq(0.05, 1.0, b
   unique_vals <- unique(col_vec)
 
   # Compute string distance matrix
-  dist_mat <- stringdistmatrix(unique_vals, unique_vals, method = "jw")
+  # Jaro–Winkler distance
+  dist_mat <- stringdistmatrix(unique_vals, unique_vals, method = "jw") 
   dist_obj <- as.dist(dist_mat)
 
   # Perform hierarchical clustering
@@ -136,7 +135,7 @@ plot_string_clustering <- function(result_df) {
 plot_string_clustering(data_funder)
 plot_string_clustering(data_installer)
 
- # --- group ----
+# --- group ----
 group_similar_categories <- function(data, column, sim_threshold = 0.2, new_col = NULL) {
   # Check that the specified column exists
   stopifnot(column %in% names(data))
@@ -162,6 +161,9 @@ group_similar_categories <- function(data, column, sim_threshold = 0.2, new_col 
   cluster_dt[, representative := first(original), by = group]
 
   # Merge representative values back into the original data
+  # .__tmp_cleaned holds the cleaned original values, 
+  # while representative stores the matched cluster representatives; 
+  # they are linked via a merge to form a mapping from original to representative strings.
   data$.__tmp_cleaned <- col_vec
   replace_map <- cluster_dt[, .(original, representative)]
   data <- merge(data, replace_map, by.x = ".__tmp_cleaned", by.y = "original", all.x = TRUE)
@@ -270,35 +272,37 @@ assign_by_keywords <- function(vec, keyword_map) {
 }
 
 data_clean$funder <- assign_by_keywords(data_clean$funder, keyword_map)
-n_distinct(data_clean$funder)
-
 data_clean$installer <- assign_by_keywords(data_clean$installer, keyword_map)
+n_distinct(data_clean$funder)
 n_distinct(data_clean$installer)
 
-# --- Recode rare categories as 'Other' ----
-group_rare <- function(x, min_freq = 20, other_label = "Other") {
-  # Coerce to character for counting
+# --- Recode rare categories as 'other' ----
+group_rare <- function(x, target_prop = 0.1, other_label = "other") {
+  # Convert to character vector
   x_char <- as.character(x)
-
-  # Compute frequencies
-  freq_tab <- table(x_char)
-
-  # Identify levels to lump
-  rare_levels <- names(freq_tab)[freq_tab < min_freq]
-
-  # Recode: if in rare_levels, set to other_label
+  total_count <- length(x_char)
+  target_count <- total_count * target_prop
+  
+  # Frequency table (ascending by default)
+  freq_tab <- sort(table(x_char))
+  
+  # Cumulative sum of frequencies
+  cum_freq <- cumsum(freq_tab)
+  
+  # Identify levels to lump into 'Other'
+  rare_levels <- names(freq_tab)[cum_freq <= target_count]
+  
+  # Recode rare levels
   x_recoded <- ifelse(x_char %in% rare_levels, other_label, x_char)
-
-  # Return as factor, with Other level first
+  
+  # Return as factor, with 'Other' as the first level
   levels_final <- c(other_label, sort(unique(setdiff(x_recoded, other_label))))
   factor(x_recoded, levels = levels_final)
 }
 
-data_clean$funder <- group_rare(data_clean$funder,
-                                        min_freq = 20, other_label = "Other")
+data_clean$funder <- group_rare(data_clean$funder)
 
-data_clean$installer <- group_rare(data_clean$installer,
-                                           min_freq = 20, other_label = "Other")
+data_clean$installer <- group_rare(data_clean$installer)
 
 n_distinct(data_clean$funder)
 n_distinct(data_clean$installer)
