@@ -198,6 +198,8 @@ row8_index <- duplicates_raw_test$row_index[8]
 # Overwrite in the original dataset using row_index
 test_all_clean[row1_index, ] <- test_all_clean[row2_index, ]
 test_all_clean[row8_index, ] <- test_all_clean[row7_index, ]
+test_all_clean <- test_all_clean %>%
+  select(-row_index)  # Remove the row_index column
 
 data_all_clean <- bind_rows(train_all_clean, test_all_clean)
 
