@@ -1,6 +1,7 @@
 ##########spatial cleaning
 ###Contributed by: Haoran Ju
-
+source("setup.R")
+set.seed(7832)
 data_all <- readRDS("data/data_all.rds")
 
 ###initial reason for imputing coordinates
@@ -108,35 +109,135 @@ data_all_clean <- data_all_clean %>%
     )
   )
 
-# modify extraction_type, delete extraction_type_class, extraction_type_group
-data_all_clean <- data_all_clean %>%
+# select best features
+best_feature <- function(data, base_col, group_col, class_col = NULL, other_col = NULL, folds = 5) {
+  set.seed(7832)
+  target_col <- "status_group"
+  
+  # create other_col if requested
+  if (!is.null(other_col)) {
+    data <- data %>% mutate(!!other_col := !!sym(group_col))
+  }
+  
+  # force character → factor
+  data[] <- lapply(data, function(x) if (is.character(x)) factor(x) else x)
+  
+  # build feature‐drop lists
+  all_feats <- setdiff(names(data), target_col)
+  
+  drop_raw  <- c(group_col, class_col, other_col) %>% na.omit()
+  drop_grp  <- c(base_col, class_col, other_col) %>% na.omit()
+  drop_oth  <- if (!is.null(other_col)) c(base_col, group_col, class_col) %>% na.omit() else NULL
+  drop_cls  <- if (!is.null(class_col)) c(base_col, group_col, other_col) %>% na.omit() else NULL
+  
+  # assemble available feature sets
+  feature_sets <- list(
+    raw     = setdiff(all_feats, drop_raw),
+    grouped = setdiff(all_feats, drop_grp)
+  )
+  if (!is.null(other_col)) {
+    feature_sets$other <- setdiff(all_feats, drop_oth)
+  }
+  if (!is.null(class_col)) {
+    feature_sets$classed <- setdiff(all_feats, drop_cls)
+  }
+  
+  # evaluate each via 5-fold CV
+  results <- lapply(names(feature_sets), function(name) {
+    cols    <- feature_sets[[name]]
+    df_sub  <- data[, c(cols, target_col)]
+    task    <- TaskClassif$new(name, df_sub, target = target_col)
+    learner <- lrn("classif.lightgbm", predict_type = "response")
+    resamp  <- rsmp("cv", folds = folds)
+    rr      <- resample(task, learner, resamp, store_models = FALSE)
+    acc     <- rr$aggregate(msr("classif.acc"))
+    list(name = name, acc = acc, data = df_sub)
+  })
+  
+  # calculate accuracy
+  acc_table <- do.call(rbind, lapply(results, function(x) {
+    data.frame(variant = x$name, accuracy = x$acc, row.names = NULL)
+  }))
+  
+  # find the best
+  best_idx <- which.max(acc_table$accuracy)
+  best_data <- results[[best_idx]]$data
+  
+  # report all and return
+  message("Accuracies by variant:")
+  print(acc_table)
+  message(sprintf("Best variant = '%s' (ACC = %f)",
+                  acc_table$variant[best_idx],
+                  acc_table$accuracy[best_idx]))
+  # pick best
+  best <- Reduce(function(a, b) if (a$acc > b$acc) a else b, results)
+  return(best$data)
+}
+
+# use train3 instead of data_all_clean to test this function
+train3 <<- data_all_clean
+train3 <- train3 %>% filter(dataset == "train") %>% select(-id, -quantity_group, 
+                                                           -recorded_by, -amount_tsh,
+                                                           -wpt_name, num_private, -dataset,
+                                                           -subvillage, -ward)
+
+# "extraction_type", "extraction_type_group", "extraction_type_class", "extraction_type_other"
+train3 <- train3 %>%
   mutate(
-    extraction_type = if_else(
-      extraction_type == "other - mkulima/shinyanga",
-      "other",
-      extraction_type)
-  ) %>%
-  mutate(
-    extraction_type = case_when(
-      str_detect(extraction_type, regex("^india mark (ii|iii)$", ignore_case = TRUE))
-      ~ "india mark",
-      str_detect(extraction_type, regex("^other - ", ignore_case = TRUE))
-      ~ str_remove(extraction_type, regex("^other - ", ignore_case = TRUE)),
-      TRUE ~ extraction_type
+    extraction_type_other = case_when(
+      extraction_type %in% c("india mark ii", "india mark iii") ~ "india mark",
+      extraction_type == "ksb" ~ "ksb",
+      extraction_type == "other - rope pump" ~ "other rope pump",
+      TRUE ~ extraction_type_group
     )
   )
 
-# keep management, delete management_group
-data_all_clean <- data_all_clean %>%
+train3 <- best_feature(data = train3, base_col = "extraction_type", group_col = "extraction_type_group", 
+                       class_col = "extraction_type_class", other_col = "extraction_type_other", folds = 5)
+colnames(train3)
+
+# "management", "management_group", "management_other"
+train3 <- train3 %>%
   mutate(
-    management = case_when(
+    management_other = case_when(
       str_detect(management, regex("^other - ", ignore_case = TRUE)) ~
         str_remove(management, regex("^other - ", ignore_case = TRUE)),
       TRUE ~ management
     )
   )
 
+train3 <- best_feature(data = train3, base_col = "management", group_col = "management_group",
+                       other_col = "management_other", folds = 5)
+colnames(train3)
+
+# "scheme_management", "scheme_name"
+unique(data_all_clean[, c("scheme_management", "scheme_name")])
+train3 <- train3 %>% select(-scheme_management)
+# train3 <- best_feature(data = train3, base_col = "scheme_name", group_col = "scheme_management", folds = 5)
+colnames(train3)
+
+# "payment", "payment_type"
+unique(train3[, c("payment", "payment_type")])
+train3 <- train3 %>% select(-payment)
+colnames(train3)
+
+# "water_quality", "quality_group"
+train3 <- best_feature(data = train3, base_col = "water_quality", group_col = "quality_group", folds = 5)
+colnames(train3)
+
+# "source", "source_type", "source_class"
+unique(data_all_clean[, c("source", "source_type", "source_class")])
+train3 <- best_feature(data = train3, base_col = "source", group_col = "source_type", 
+                       class_col = "source_class", folds = 5)
+colnames(train3)
+
+# "waterpoint_type", "waterpoint_type_group"
+unique(data_all_clean[, c("waterpoint_type", "waterpoint_type_group")])
+train3 <- best_feature(data = train3, base_col = "waterpoint_type", group_col = "waterpoint_type_group", 
+                       folds = 5)
+
 # delete some columns
+colnames(data_all_clean)
 cols_remove <- c("id", "quantity_group", "recorded_by",
                  "amount_tsh", "wpt_name", "num_private", "extraction_type_class",
                  "extraction_type_group", "management_group", "payment",

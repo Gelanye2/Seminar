@@ -1,6 +1,7 @@
+source("setup.R")
 df_combined <- readRDS("data/df_combined.rds")
 df_boost <<- df_combined
-set.seed(2025)
+set.seed(7832)
 
 trainset <- df_boost %>% filter(dataset == "train")
 testset <- df_boost %>% filter(dataset == "test")

@@ -1,34 +1,9 @@
-# Load required libraries
-library(readr)
-library(stringdist)
-library(data.table)
-library(stringr)
-library(mlr3)
-library(mlr3pipelines)
-library(mlr3learners)
-library(cluster)
-library(clusterCrit)
-library(dplyr)
-library(ggplot2)
-library(patchwork)
-library(ggrepel)
-library(stringr)
-library(caret)
-library(pROC)
-library(mlr3extralearners)
-library(lightgbm)
-library(paradox)
+source("setup.R")
 
-
-set.seed(2025)
+set.seed(7832)
 data_cls <<- data_all_clean
-data_cls$funder <- clean_func(data_cls$funder)
-data_cls$installer <- clean_func(data_cls$installer)
-data_cls <- data_cls %>% select(-region, -district_code, -subvillage,
+data_cls <- data_cls %>% select(-region_code, -district_code, -subvillage,
                                 -longitude, -latitude, -ward, -lga, -region_district)
-
-df_train <- data_cls %>% filter(dataset == "train")
-df_test <- data_cls %>% filter(dataset == "test")
 
 # --- 1. Cleaning function ----
 # Trim, lowercase, coerce to character; set missing‐like values to NA; standardize unknowns
@@ -48,6 +23,10 @@ clean_func <- function(x) {
   
   return(x)
 }
+data_cls$funder <- clean_func(data_cls$funder)
+data_cls$installer <- clean_func(data_cls$installer)
+df_train <- data_cls %>% filter(dataset == "train")
+df_test <- data_cls %>% filter(dataset == "test")
 
 # --- 2. Clustering utilities ---
 # 2.1 Evaluate silhouette across thresholds and pick the best non‐NA threshold
