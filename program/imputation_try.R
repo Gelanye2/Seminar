@@ -14,7 +14,7 @@ train_all_clean <- readRDS("data/fi_clean.rds") %>%
 #select cols for training, use region_code
 train_model <- train_all_clean %>%
   select(-longitude, -latitude, -lga, -ward, -subvillage,-district_code, -region,-dataset,-year_recorded, -month_recorded
-         ,-region_code,-row_index) %>%
+         ,-region_code) %>%
   mutate(population = ifelse(population == 0, NA, population))
 #find missing values
 missing_summary <- function(df) {
