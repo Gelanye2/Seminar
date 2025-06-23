@@ -121,6 +121,7 @@ saveRDS(data_all_buffer, file = "data/data_all_spatial0.rds")
 #a dataset with additional information: population around coords, coords cluster, neighbor counts
 data_all_spatial <- readRDS("data/data_all_spatial0.rds")
 data_all_spatial<- data_all_spatial %>%
-  filter(longitude != 0, latitude != 0)
+  filter(longitude != 0, latitude != 0) %>%
+  select(-row_index)
 #save the final dataset
 saveRDS(data_all_spatial, "data/data_all_spatial.rds")
