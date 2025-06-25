@@ -58,7 +58,7 @@ pred_tr_gbm <- apply(prob_tr_gbm, 1, function(p) levs[which.max(p)])
 acc_tr_gbm <- mean(pred_tr_gbm == train_fi$status_group, na.rm = TRUE)
 cat("GBM training accuracy (baseline):", acc_tr_gbm, "\n") #0.7046633 0.7257174 0.7273731 
 
-# 5cv: 0.7268212 0.7273731 
+# 5cv: 0.7268212 0.7273731 0.7378587 
 
 ## --- lightgbm ----
 library(lightgbm)
@@ -98,7 +98,7 @@ pred_labels <- factor(
 )
 mean(pred_labels == train_fi$status_group)
 acc_tr_lgb <- 1 - lgb_baseline$record_evals$train$multi_error$eval[100][[1]]
-cat("LightGBM training accuracy (baseline):", acc_tr_lgb, "\n") #0.8007744 #0.8984547 0.8962472 
+cat("LightGBM training accuracy (baseline):", acc_tr_lgb, "\n") #0.8007744 #0.8984547 0.8962472 0.9050773 
 
 # 5cv
 params <- list(
@@ -122,7 +122,7 @@ cv_res <- lgb.cv(
 best_iter   <- cv_res$best_iter
 best_err    <- cv_res$record_evals$valid$multi_error$eval[best_iter]
 lgb_acc_5cv <- 1 - best_err[[1]]
-cat("LightGBM 5-fold CV Accuracy:", lgb_acc_5cv, "\n") #0.8001179 #0.806846 0.800768 
+cat("LightGBM 5-fold CV Accuracy:", lgb_acc_5cv, "\n") #0.8001179 #0.806846 0.800768 0.8024261 
 
 ## --- XGboost ----
 library(xgboost)
@@ -172,7 +172,7 @@ pred_labels <- factor(
 )
 
 acc_train_xgb <- mean(pred_labels == train_fi$status_group, na.rm = TRUE)
-cat("XGBoost training accuracy (baseline):", acc_train_xgb, "\n") #0.83 #0.9050773 0.9001104 
+cat("XGBoost training accuracy (baseline):", acc_train_xgb, "\n") #0.83 #0.9050773 0.9001104  0.9050773 
 
 # 5cv
 dtrain_xgb <- xgb.DMatrix(train_mat, label = train_fi$y_num, missing = NA)
@@ -200,7 +200,8 @@ cv_xgb <- xgb.cv(
 best_idx      <- cv_xgb$best_iteration
 best_err_xgb  <- cv_xgb$evaluation_log[best_idx,]$test_merror_mean
 xgb_acc_5cv   <- 1 - best_err_xgb
-cat("XGBoost 5-fold CV Accuracy:", xgb_acc_5cv, "\n") #0.8040729 (no la, lo) 0.8107301 
+cat("XGBoost 5-fold CV Accuracy:", xgb_acc_5cv, "\n") 
+#0.8040729 (no la, lo) 0.8107301 0.8123702 0.8134758 
 
 ## --- CatBoost ----
 Sys.setenv(R_INSTALL_STAGED = "FALSE")
