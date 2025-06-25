@@ -1,7 +1,9 @@
-train_all_clean <- readRDS("data/fi_clean.rds")
-
+data_clean <- readRDS("data/fi_clean.rds")
+train_data_clean <- data_clean %>% filter(dataset == "train")
+test_data_clean <- data_clean %>% filter(dataset == "test")
+  
 #select cols for training, use region_code
-train_model_copy  <- train_all_clean %>%
+train_data_clean  <- train_data_clean %>%
   select(-longitude, -latitude, -lga, -ward, -subvillage, -district_code, -region,-dataset, -region_code)
 
 #write a function for getting mode
@@ -12,7 +14,7 @@ get_mode <- function(x) {
 
 #here we should edit: get mode for scheme_management, public_meeting, permit,installer and funder,
 #and mutate,also factorize
-train_model_copy <- train_model_copy %>%
+train_data_imputed <- train_data_clean %>%
   mutate(
     population = replace_na(population, median(population, na.rm = TRUE)),
     years_in_use = replace_na(years_in_use, median(years_in_use, na.rm = TRUE)),
@@ -28,12 +30,13 @@ train_model_copy <- train_model_copy %>%
     across(where(is.character), as.factor))
 
 #save the imputed dataset
-factor_cols <- names(train_model_copy)[vapply(train_model_copy, is.factor, logical(1))]
-test_all_clean <- test_all_clean %>% 
+factor_cols <- names(train_data_imputed)[vapply(train_data_imputed, is.factor, logical(1))]
+test_data_clean <- test_data_clean %>% 
   mutate(across(all_of(factor_cols), as.factor)) %>%
   select(-longitude, -latitude, -lga, -ward, -subvillage,-district_code, -region,-dataset, -region_code)
 
-data_imputed <- bind_rows(train_model_copy, test_all_clean)
+data_imputed <- bind_rows(train_data_imputed, test_data_clean)
 
+saveRDS(train_data_imputed, "data/train_data_imputed.rds")
 saveRDS(data_imputed, "data/data_imputed.rds")
 
