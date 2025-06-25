@@ -1,6 +1,6 @@
 source("setup.R")
-fi_clean <- readRDS("data/fi_clean.rds")
-fi_boost <<- fi_clean
+imputed <- readRDS("data/data_imputed.rds")
+fi_boost <<- imputed
 
 # keep longitude, latitude == NA then drop these 2 columns
 fi_boost <- fi_boost %>%
