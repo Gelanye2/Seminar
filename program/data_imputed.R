@@ -2,52 +2,43 @@ data_clean <- readRDS("data/fi_clean.rds")
 train_data_clean <- data_clean %>% filter(dataset == "train")
 test_data_clean <- data_clean %>% filter(dataset == "test")
 
-#select cols for training, use region_code
-train_data_clean  <- train_data_clean %>%
-  select(-longitude, -latitude, -lga, -ward, -subvillage, -district_code, -region,-dataset, -region_code)
+drop_cols <- c("longitude", "latitude", "lga", "ward", "subvillage",
+               "district_code", "dataset", "region_code")         
 
-#write a function for getting mode
-get_mode <- function(x) {
-  ux <- unique(x)
-  ux[which.max(tabulate(match(x, ux)))]
-}
-
-#here we should edit: get mode for scheme_management, public_meeting, permit,installer and funder,
-#and mutate,also factorize
-train_data_imputed <- train_data_clean %>%
-  mutate(
-    population = replace_na(population, median(population, na.rm = TRUE)),
-    years_in_use = replace_na(years_in_use, median(years_in_use, na.rm = TRUE)),
-    gps_height = replace_na(gps_height, median(gps_height, na.rm = TRUE)),
-    scheme_management = replace_na(scheme_management, get_mode(scheme_management)),
-    public_meeting = as.factor(public_meeting),
-    public_meeting = replace_na(public_meeting, get_mode(public_meeting)),
-    permit = as.factor(permit),
-    permit = replace_na(permit, get_mode(permit)),
-    installer = replace_na(installer, get_mode(installer)),
-    funder = replace_na(funder, get_mode(funder)),
-    gps_height = replace_na(gps_height, median(gps_height, na.rm = TRUE)),
-    across(where(is.character), as.factor))
-
-# Select rows with missing latitude or longitude (test data)
-test_data_clean <- test_data_clean %>% 
+train  <- train_data_clean %>% select(-all_of(drop_cols))
+test <- test_data_clean %>% 
   filter(
     latitude  ==  0      | latitude  == -2e-08 |
       longitude ==  0      | longitude == -2e-08
-  )  %>% 
-  select(-longitude, -latitude, -lga, -ward, -subvillage,-district_code, -region,-dataset, -region_code)
+  )   %>% 
+  select(-all_of(drop_cols)) 
 
-bool_cols <- c(
-  names(train_data_imputed)[vapply(train_data_imputed, is.logical, logical(1))],
-  names(test_data_clean   )[vapply(test_data_clean,    is.logical, logical(1))]
-)
+# 2. Compute global medians / modes from the train set only
+gph_med   <- median(train$gps_height,   na.rm = TRUE)
+yiu_med   <- median(train$years_in_use, na.rm = TRUE)
+get_mode  <- function(x) { ux <- unique(x); ux[which.max(tabulate(match(x, ux)))] }
+sch_mode  <- get_mode(train$scheme_management)
+pub_mode  <- get_mode(train$public_meeting)
+perm_mode <- get_mode(train$permit)
+inst_mode <- get_mode(train$installer)
+fund_mode <- get_mode(train$funder)
 
-train_data_imputed <- train_data_imputed %>%
-  mutate(across(all_of(bool_cols), as.logical))
+# 3. Impute both data frames with those same values
+impute_fun <- function(df) {
+  df %>% mutate(
+    gps_height        = replace_na(gps_height,        gph_med),
+    years_in_use      = replace_na(years_in_use,      yiu_med),
+    scheme_management = replace_na(scheme_management, sch_mode),
+    public_meeting    = factor(replace_na(public_meeting, pub_mode)),
+    permit            = factor(replace_na(permit, perm_mode)),
+    installer         = replace_na(installer, inst_mode),
+    funder            = replace_na(funder, fund_mode),
+    across(where(is.character), as.factor)
+  )
+}
 
-test_data_clean  <- test_data_clean %>%
-  mutate(across(any_of(bool_cols), as.logical)) 
+train_imp <- impute_fun(train)
+test_imp  <- impute_fun(test)
 
-data_imputed <- bind_rows(train_data_imputed, test_data_clean)
+data_imputed <- bind_rows(train_imp, test_imp)
 
-saveRDS(data_imputed, "data/data_imputed.rds")
