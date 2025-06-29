@@ -8,8 +8,7 @@ train_all_clean <- readRDS("data/fi_clean.rds") %>%
 #select cols for training, use region_code
 train_model <- train_all_clean %>%
   select(-longitude, -latitude, -lga, -ward, -subvillage,-district_code, -region,-dataset,-year_recorded, -month_recorded
-         ,-waterpoint_type_group,-region_district) %>%
-  mutate(population = ifelse(population == 0, NA, population))
+         ,-waterpoint_type_group,-region_district) 
 #find missing values
 missing_summary <- function(df) {
   miss_pct <- sapply(df, function(x) mean(is.na(x)))
@@ -94,7 +93,7 @@ train_all_clean <- readRDS("data/train_all_clean.rds")
 #select cols for training, use region_code
 train_model <- train_all_clean %>%
   select(-longitude, -latitude, -lga, -ward, -subvillage,,-district_code, -region,-dataset,-year_recorded, -month_recorded
-         , -waterpoint_type_group,-region_district)
+         , -region_district)
 train_model_copy <- train_model
 
 #write a function for getting mode
@@ -126,13 +125,56 @@ task <- TaskClassif$new(
   backend = train_model_copy,
   target = "status_group"
 )
-#
+# 1.ranger
 learner <- lrn("classif.ranger", predict_type = "prob")
+rr <- mlr3::resample(task, learner, rsmp("cv", folds = 3))
+rr$aggregate()
+# 0.1999292 
+
+## 2.knn
+lrn_knn    <- lrn("classif.kknn",
+                  predict_type = "prob",
+                  k            = 7)          # Standardwert kannst du anpassen
+rr <- mlr3::resample(task, lrn_knn, rsmp("cv", folds = 3))
+rr$aggregate()
+## 0.23
+
+## ------   3.xgb ---------
+set.seed(42)
+# 1. Basis-Learner
+lrn_xgb <- lrn("classif.xgboost",
+               predict_type = "prob",
+               nrounds      = 300,
+               eta          = 0.1,
+               max_depth    = 6,
+               objective    = "multi:softprob",
+               eval_metric  = "mlogloss")
+
+# 2. Pipeline:  (Konstanten entfernen) → (One-Hot-Encoding) → (XGBoost)
+graph <- po("removeconstants") %>>%
+  po("encode", method = "one-hot") %>>%
+  lrn_xgb
+
+glrn <- GraphLearner$new(graph)
+
+# 3. 3-fach Cross-Validation
+rr <- mlr3::resample(task, glrn, rsmp("cv", folds = 3))
+
+# 4. Aggregierte Metrik
+rr$aggregate(msr("classif.acc"))
+#
+
+
+## ------- rpart -----------
+learner <- lrn("classif.rpart",
+               predict_type = "prob",
+               cp        = 0.01,   # Complexity-Parameter
+               minsplit  = 20,
+               maxdepth  = 30)
 rr <- resample(task, learner, rsmp("cv", folds = 3))
 rr$aggregate()
 
-
-###mean+mode
+### --------------- mean+mode --------------
 train_model_copy <- train_model
 train_model_copy <-train_model_copy %>%
   mutate(
@@ -154,10 +196,58 @@ task <- TaskClassif$new(
   backend = train_model,
   target = "status_group"
 )
-#
+# 1.ranger
 learner <- lrn("classif.ranger", predict_type = "prob")
-rr <- resample(task, learner, rsmp("cv", folds = 3))
+rr <- mlr3::resample(task, learner, rsmp("cv", folds = 3))
 rr$aggregate()
+# 0.2006708 
+
+# 2. knn
+lrn_knn    <- lrn("classif.kknn",
+                  predict_type = "prob",
+                  k            = 7)          # Standardwert kannst du anpassen
+rr <- mlr3::resample(task, lrn_knn, rsmp("cv", folds = 3))
+rr$aggregate()
+# 0.2325429 
+
+# --- 3. xgb -----
+
+set.seed(42)
+# 1. Basis-Learner
+lrn_xgb <- lrn("classif.xgboost",
+               predict_type = "prob",
+               nrounds      = 300,
+               eta          = 0.1,
+               max_depth    = 6,
+               objective    = "multi:softprob",
+               eval_metric  = "mlogloss")
+
+# 2. Pipeline:  (Konstanten entfernen) → (One-Hot-Encoding) → (XGBoost)
+graph <- po("removeconstants") %>>%
+  po("encode", method = "one-hot") %>>%
+  lrn_xgb
+
+glrn <- GraphLearner$new(graph)
+
+# 3. 3-fach Cross-Validation
+rr <- mlr3::resample(task, glrn, rsmp("cv", folds = 3))
+
+# 4. Aggregierte Metrik
+rr$aggregate(msr("classif.acc"))
+#
+
+
+## 4. rpart
+library(mlr3)
+library(mlr3learners) 
+lrn_rpart <- lrn("classif.rpart",
+               predict_type = "prob",
+               cp        = 0.01,   # Complexity-Parameter
+               minsplit  = 20,
+               maxdepth  = 30)
+rr <- mlr3::resample(task, lrn_rpart, rsmp("cv", folds = 3))
+rr$aggregate()
+# 
 
 
 ###delete all columns with missing values
