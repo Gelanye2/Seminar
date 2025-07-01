@@ -2,6 +2,7 @@ data_clean <- readRDS("data/fi_clean.rds")
 train_data_clean <- data_clean %>% filter(dataset == "train")
 test_data_clean <- data_clean %>% filter(dataset == "test")
 
+
 drop_cols <- c("longitude", "latitude", "lga", "ward", "subvillage",
                "district_code", "dataset", "region_code")         
 
@@ -12,6 +13,8 @@ test <- test_data_clean %>%
       longitude ==  0      | longitude == -2e-08
   )   %>% 
   select(-all_of(drop_cols)) 
+test_full <- test_data_clean %>% select(-all_of(drop_cols))
+##-------- imputation with median and mode --------------
 
 # 2. Compute global medians / modes from the train set only
 gph_med   <- median(train$gps_height,   na.rm = TRUE)
@@ -39,6 +42,71 @@ impute_fun <- function(df) {
 
 train_imp <- impute_fun(train)
 test_imp  <- impute_fun(test)
+test_full_imp <- impute_fun(test_full)
 
-data_imputed <- bind_rows(train_imp, test_imp)
+sub_imputed <- bind_rows(train_imp, test_imp) # for submodel
+data_imputed <- bind_rows(train_imp, test_full_imp)
+
+# ------------ imputation with mice ---------
+data_all <- bind_rows(
+  train_imp %>% mutate(source == "train"),   # still has status_group
+  test_imp  %>% mutate(source == "test")     # status_group is NA
+)
+
+#############
+library(mice)
+
+# 2a. A dry-run to grab default settings
+ini  <- mice(data_all, maxit = 0)
+
+# 2b. Copy the defaults
+meth <- ini$method
+pred <- ini$predictorMatrix
+
+# 2c. Tell mice not to impute the target
+meth["status_group"] <- ""     # ""  = leave as is (don’t touch)
+pred[,  "status_group"] <- 0    # don’t use it to predict others either
+
+#########
+imp <- mice(
+  data_all,
+  m      = 5,          # 5 completed data sets (common default)
+  maxit  = 5,          # iterations per chain; raise if convergence is slow
+  method = meth,
+  predictorMatrix = pred,
+  seed   = 2024
+)
+
+mice_imputed <- complete(imp, action = 1)   # pick the first of the m imputations
+
+train_clean <- mice_imputed %>% filter(source == "train" & !is.na(status_group))
+test_clean  <- mice_imputed %>% filter(source == "test")
+mice_imputed <- mice_imputed %>% 
+  select(-`source == "train"`, -`source == "test"`)
+
+saveRDS(data_imputed, "data/data_imputed.rds")
+saveRDS(sub_imputed, "data/sub_imputed.rds")
+saveRDS(mice_imputed, "data/mice_imputed.rds")
+
+#####
+## check if test_full_imp identical to test_data_clean (order)
+identical(
+  test_full_imp %>%
+    select(extraction_type, management, region, basin,population) %>%
+    mutate(across(everything(), as.character)),
+  
+  test_data_clean %>%
+    select(extraction_type, management, region, basin,population) %>%
+    mutate(across(everything(), as.character))
+)
+
+library(waldo)
+old <- test_data_clean
+new <- test_full_imp
+identical(
+  old %>% mutate(across(everything(), as.character)),
+  new %>% mutate(across(everything(), as.character)))
+compare(old, new)
+
+
 
