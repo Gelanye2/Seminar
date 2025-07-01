@@ -1,7 +1,9 @@
 source("setup.R")
 
 data_all_clean <- readRDS("data/data_all_clean.rds")
-data_clean <<- data_all_clean
+data_clean <- data_all_clean %>%
+  mutate(row_id = row_number())
+
 # --- Clean individual entries ----
 clean_func <- function(x) {
   
@@ -307,4 +309,9 @@ data_clean$installer <- group_rare(data_clean$installer)
 n_distinct(data_clean$funder)
 n_distinct(data_clean$installer)
 
+data_clean <- data_clean %>%
+  arrange(row_id) %>%
+  select(-row_id)
+
 saveRDS(data_clean, "data/fi_clean.rds")
+
