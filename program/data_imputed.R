@@ -44,6 +44,23 @@ train_imp <- impute_fun(train)
 test_imp  <- impute_fun(test)
 test_full_imp <- impute_fun(test_full)
 
+#Faktor-Levels in beiden Datensätzen angleichen
+
+# alle Spalten im test-set so anpassen, dass die Levels wie im train sind
+align_factors <- function(train, test) {
+  common_names <- intersect(names(train), names(test))
+  
+  for (col in common_names) {
+    if (is.factor(train[[col]]) && is.factor(test[[col]])) {
+      # setze Levels im Test-Datensatz gleich wie im Train-Datensatz
+      test[[col]] <- factor(test[[col]], levels = levels(train[[col]]))
+    }
+  }
+  return(test)
+}
+
+# Anwendung
+test_full_imp <- align_factors(train_imp, test_full_imp)
 sub_imputed <- bind_rows(train_imp, test_imp) # for submodel
 data_imputed <- bind_rows(train_imp, test_full_imp)
 
@@ -53,7 +70,7 @@ data_all <- bind_rows(
   test_imp  %>% mutate(source == "test")     # status_group is NA
 )
 
-#############
+##########
 library(mice)
 
 # 2a. A dry-run to grab default settings
@@ -86,27 +103,34 @@ mice_imputed <- mice_imputed %>%
 
 saveRDS(data_imputed, "data/data_imputed.rds")
 saveRDS(sub_imputed, "data/sub_imputed.rds")
+saveRDS(test_full_imp, "data/test_full_imp.rds")
 saveRDS(mice_imputed, "data/mice_imputed.rds")
+
 
 #####
 ## check if test_full_imp identical to test_data_clean (order)
 identical(
-  test_full_imp %>%
+  as.data.frame(test_all) %>%
     select(extraction_type, management, region, basin,population) %>%
     mutate(across(everything(), as.character)),
   
-  test_data_clean %>%
+  as.data.frame(test_full_imp) %>%
     select(extraction_type, management, region, basin,population) %>%
     mutate(across(everything(), as.character))
 )
 
 library(waldo)
-old <- test_data_clean
-new <- test_full_imp
-identical(
-  old %>% mutate(across(everything(), as.character)),
-  new %>% mutate(across(everything(), as.character)))
-compare(old, new)
+
+old <- test_all %>% 
+  select(extraction_type, management, region, basin,population,public_meeting) %>%
+  mutate(across(everything(), as.character))
+
+new <- test_full_imp %>%
+  select(extraction_type, management, region, basin,population,public_meeting) %>%
+  mutate(across(everything(), as.character))
+
+# Compare the two cleaned-up data frames
+compare(old, new, max_diffs = Inf)
 
 
 
