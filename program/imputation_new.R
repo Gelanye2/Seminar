@@ -1,6 +1,9 @@
 print(.libPaths())
 .libPaths("/media/external/s25_5/Rlibs")
 
+library(future)
+plan(multisession)
+
 library(mlr3)
 library(mlr3learners)
 library(mlr3pipelines)
@@ -51,14 +54,14 @@ for (name in names(learners)) {
   
   rr = mlr3::resample(task, graph_learner, outer_rsmp, store_models = TRUE)
   
-  acc = rr$aggregate(msr("classif.ce")) 
+  acc = rr$aggregate(msr("classif.acc")) 
   results[[name]] = acc
 }
 
 print(results) #ranger:  0.7918795 
-               #xgboost
-               #rpart
-               #knn
+               #xgboost 0.7943402
+               #rpart 0.6977634
+               #knn:  0.7538386
 
 #-------------- 2. Pipeline (median + mode + encoding) + verschiedene Learner ----------
 for (name in names(learners)) {
@@ -73,17 +76,15 @@ for (name in names(learners)) {
   
   rr = mlr3::resample(task, graph_learner, outer_rsmp, store_models = TRUE)
   
-  acc = rr$aggregate(msr("classif.ce"))
+  acc = rr$aggregate(msr("classif.acc"))
   results_median[[name]] = acc
 }
 
 print(results_median)
 
 #ranger: 0.7901771 
-#xgboost:
-#rpart:
-#knn:
-
-#------------imputation with -----------------------
+#xgboost: 0.7938514 
+#rpart: 0.697696
+#knn: 0.7534341
 
 
