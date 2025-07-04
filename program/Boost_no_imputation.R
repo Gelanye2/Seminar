@@ -1,23 +1,24 @@
 source("setup.R")
-imputed <- readRDS("data/data_imputed.rds")
-fi_boost <<- imputed
+fi_clean <- readRDS("data/fi_clean.rds")
+fi_boost <<- fi_clean
 
-# keep longitude, latitude == NA then drop these 2 columns
-fi_boost <- fi_boost %>%
-  filter(longitude == 0 | latitude == -2e-08) %>%
-  select(-longitude, -latitude)
-
+# # keep longitude, latitude == NA then drop these 2 columns
+# fi_boost <- fi_boost %>%
+#   filter(longitude == 0 | latitude == -2e-08) %>%
+#   select(-longitude, -latitude)
+# 
 # only keep region_district
-fi_boost <- fi_boost %>% select(-region, -district_code, -subvillage, -ward, 
-                                -lga, -region_code, -waterpoint_type_group,
-                                -years_in_use) %>%
+fi_boost <- fi_boost %>% select(-region, -district_code, -subvillage, -ward,
+                                -lga, -region_code, -years_in_use) %>%
                          select_if(~ length(unique(.[!is.na(.)])) > 1)
+
+fi_boost <- fi_boost %>% select_if(~ length(unique(.[!is.na(.)])) > 1)
 
 set.seed(7832)
 
 # no learner, no imputation
-train_fi <- fi_boost %>% filter(dataset == "train") %>% select(-dataset)
-test_fi <- fi_boost %>% filter(dataset == "test") %>% select(-dataset)
+train_fi <- fi_boost %>% filter(!is.na(status_group))
+test_fi  <- fi_boost %>% filter( is.na(status_group))
 
 # encode
 train_fi$y_num <- as.numeric(train_fi$status_group) - 1
@@ -59,6 +60,12 @@ acc_tr_gbm <- mean(pred_tr_gbm == train_fi$status_group, na.rm = TRUE)
 cat("GBM training accuracy (baseline):", acc_tr_gbm, "\n") #0.7046633 0.7257174 0.7273731 
 
 # 5cv: 0.7268212 0.7273731 0.7378587 
+# 5cv impu: 0.7000219 
+
+cm   <- table(true = train_fi$status_group, pred = pred_tr_gbm)
+sens <- diag(cm) / rowSums(cm)
+# balanced_acc_manual
+mean(sens)
 
 ## --- lightgbm ----
 library(lightgbm)
@@ -99,6 +106,7 @@ pred_labels <- factor(
 mean(pred_labels == train_fi$status_group)
 acc_tr_lgb <- 1 - lgb_baseline$record_evals$train$multi_error$eval[100][[1]]
 cat("LightGBM training accuracy (baseline):", acc_tr_lgb, "\n") #0.8007744 #0.8984547 0.8962472 0.9050773 
+# imp: 0.7000219 
 
 # 5cv
 params <- list(
@@ -118,11 +126,11 @@ cv_res <- lgb.cv(
   verbose             = 0,
   stratified          = TRUE      
 )
-
 best_iter   <- cv_res$best_iter
 best_err    <- cv_res$record_evals$valid$multi_error$eval[best_iter]
 lgb_acc_5cv <- 1 - best_err[[1]]
 cat("LightGBM 5-fold CV Accuracy:", lgb_acc_5cv, "\n") #0.8001179 #0.806846 0.800768 0.8024261 
+# imp: 0.8012843 
 
 ## --- XGboost ----
 library(xgboost)
@@ -173,6 +181,7 @@ pred_labels <- factor(
 
 acc_train_xgb <- mean(pred_labels == train_fi$status_group, na.rm = TRUE)
 cat("XGBoost training accuracy (baseline):", acc_train_xgb, "\n") #0.83 #0.9050773 0.9001104  0.9050773 
+# imp: 0.8279314 
 
 # 5cv
 dtrain_xgb <- xgb.DMatrix(train_mat, label = train_fi$y_num, missing = NA)
@@ -202,6 +211,8 @@ best_err_xgb  <- cv_xgb$evaluation_log[best_idx,]$test_merror_mean
 xgb_acc_5cv   <- 1 - best_err_xgb
 cat("XGBoost 5-fold CV Accuracy:", xgb_acc_5cv, "\n") 
 #0.8040729 (no la, lo) 0.8107301 0.8123702 0.8134758 
+#0.7984866 
+
 
 ## --- CatBoost ----
 Sys.setenv(R_INSTALL_STAGED = "FALSE")
@@ -338,3 +349,5 @@ cv_acc <- sapply(folds, function(idx_test) {
 
 cv_acc
 mean(cv_acc) #0.7461784 #0.79139 0.7814483
+
+fi_boost %>% group_by(region_district) %>% length(is.na(status_group))

@@ -376,3 +376,149 @@ pred_train <- predict(c5_mod, trainset)
 
 acc_train_c5 <- mean(pred_train == trainset$status_group, na.rm = TRUE)
 cat("C5.0 training accuracy (baseline):", round(acc_train_c5,4), "\n") #0.7632323
+
+
+# ---- imbalance acc ----
+task_ll <- TaskClassif$new(
+  id      = "ll",
+  backend = train_ll,
+  target  = "status_group"
+)
+
+graph <- po("colapply",
+            param_vals = list(
+              applicator     = function(x) if (is.character(x)) as.factor(x) else x,
+              affect_columns = selector_type("character")
+            )) %>>%
+  po("removeconstants") %>>%
+  po("encode", method = "treatment") %>>%
+  lrn("classif.xgboost",
+      predict_type     = "response",
+      objective        = "multi:softprob",
+      eval_metric      = "merror",
+      nrounds                 = 1000L,
+      eta                     = 0.1,
+      max_depth               = 6,
+      subsample               = 0.8,
+      colsample_bytree        = 0.8
+  )
+
+glrn <- GraphLearner$new(graph)
+
+rr <- mlr3::resample(
+  task      = task_ll,
+  learner   = glrn,
+  resampling= rsmp("cv", folds = 3),
+  store_models = FALSE
+)
+
+rr$aggregate(msr("classif.bacc")) #0.6546479 
+
+# ---- for loop ----
+df <- fi_clean %>%
+  select(-region_district, -district_code, -subvillage, -ward, 
+         -lga, -region_code, -longitude, -latitude) %>%
+  select_if(~ length(unique(.[!is.na(.)])) > 1)
+
+df_train <- df %>% filter(!is.na(status_group))
+
+results <- list()
+
+for(this_region in unique(df_train$region)) {
+  
+  message("Training model for region: ", this_region)
+  
+  df_train_r <- df_train %>% filter(region == this_region)
+  
+  task <- TaskClassif$new(
+    id      = paste0("reg_", this_region),
+    backend = df_train_r,
+    target  = "status_group"
+  )
+  
+  # Pipeline：char→factor → remove constants → treatment encode → xgboost
+  graph <- po("colapply", param_vals = list(
+    applicator     = function(x) if (is.character(x)) as.factor(x) else x,
+    affect_columns = selector_type("character")
+  )) %>>%
+    po("removeconstants")            %>>%
+    po("encode", method = "treatment") %>>%
+    lrn("classif.xgboost",
+        predict_type = "response",
+        nrounds                 = 1000L,
+        eta                     = 0.1,
+        max_depth               = 6,
+        subsample               = 0.8,
+        colsample_bytree        = 0.8)
+  
+  glrn <- GraphLearner$new(graph)
+  
+  # 5-fold CV
+  rr <- mlr3::resample(task, glrn, rsmp("cv", folds = 5))
+  acc <- rr$aggregate(msr("classif.acc"))
+  
+  results[[this_region]] <- acc
+}
+
+mean_acc <- mean(unlist(results)) #0.7944001
+
+# ---- keep longitude == NA and latitude == NA and region_district (nrow = 2269)
+# Keep only rows where (longitude == 0 or latitude ~ 0), then drop those two cols
+df_noll <- fi_clean %>%
+  filter(longitude == 0 | abs(latitude) < 1e-6) %>%
+  select(-longitude, -latitude)
+
+# Drop all location‐level columns except region_district, then drop any all‐constant cols
+df_noll <- df_noll %>%
+  select(-region, -district_code, -subvillage, -ward, -lga, -region_code) %>%
+  select_if(~ length(unique(.[!is.na(.)])) > 1)
+
+#df_noll <- df_noll %>%
+#  mutate(y_num = as.integer(status_group) - 1)
+
+# Split into labeled train / unlabeled test
+train <- df_noll %>% filter(!is.na(status_group))
+test  <- df_noll %>% filter( is.na(status_group))
+
+# mlr3 task on the training set
+task <- TaskClassif$new(
+  id      = "noll",
+  backend = train,
+  target  = "status_group"
+)
+
+# Build a pipeline Graph:
+graph <- 
+  po("colapply",  
+     param_vals = list(
+       applicator     = function(x) if (is.character(x)) as.factor(x) else x,
+       affect_columns = selector_type("character")
+     )
+  ) %>>%
+  po("removeconstants",  
+     param_vals = list(
+       affect_columns = selector_type(c("numeric","integer","factor"))
+     )
+  ) %>>%
+  po("encode", method = "treatment") %>>%
+  lrn("classif.xgboost",
+      predict_type            = "response",
+      nrounds                 = 2000L,
+      eta                     = 0.05,
+      max_depth               = 6,
+      subsample               = 0.8,
+      colsample_bytree        = 0.8
+  )
+
+
+# Wrap as GraphLearner
+glrn <- GraphLearner$new(graph)
+
+# 5-fold CV
+resampling <- rsmp("cv", folds = 5)
+rr <- mlr3::resample(task, glrn, resampling, store_models = FALSE)
+
+# Aggregate CV accuracy
+acc_5cv <- rr$aggregate(msr("classif.acc"))
+cat("XGBoost 5-fold CV Accuracy:", acc_5cv, "\n") #0.7853
+

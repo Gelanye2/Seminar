@@ -384,3 +384,13 @@ data_all_clean <- data_all_clean %>%
       TRUE ~ management
     )
   )
+
+# region_district: test
+fi_boost %>%
+  group_by(region_district) %>%
+  summarise(
+    n_total     = n(),
+    n_missing   = sum(is.na(status_group)),
+    pct_missing = mean(is.na(status_group))
+  ) %>%
+  arrange(n_total)
