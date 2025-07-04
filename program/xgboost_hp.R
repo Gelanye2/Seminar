@@ -55,7 +55,6 @@ graph <- po("colapply",  # char -> factor
 
 base_lrn <- GraphLearner$new(graph)
 
-# set a small one
 ps <- ps(
   "classif.xgboost.eta"             = p_dbl(0.1, 0.2, logscale = TRUE),
   "classif.xgboost.nrounds"         = p_int(100, 500),
