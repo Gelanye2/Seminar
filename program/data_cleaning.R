@@ -117,21 +117,30 @@ best_feature <- function(data, base_col, group_col, class_col = NULL, other_col 
   target_col <- "status_group"
   
   # (1) If requested, create the other_col by duplicating group_col
+  # create other_col if requested
   if (!is.null(other_col)) {
     data <- data %>% mutate(!!other_col := !!sym(group_col))
   }
   
   # Build lists of features to drop for each variant
   all_feats <- setdiff(names(data), target_col)
+  # force character → factor
+  data[] <- lapply(data, function(x) if (is.character(x)) factor(x) else x)
+  
+  # build feature‐drop lists
+  all_feats <- setdiff(names(data), target_col)
+
   drop_raw  <- c(group_col, class_col, other_col) %>% na.omit()
   drop_grp  <- c(base_col, class_col, other_col) %>% na.omit()
   drop_oth  <- if (!is.null(other_col)) c(base_col, group_col, class_col) %>% na.omit() else NULL
   drop_cls  <- if (!is.null(class_col)) c(base_col, group_col, other_col) %>% na.omit() else NULL
-  
+
+  # assemble available feature sets
   feature_sets <- list(
     raw     = setdiff(all_feats, drop_raw),
     grouped = setdiff(all_feats, drop_grp)
   )
+
   if (!is.null(other_col))  feature_sets$other   <- setdiff(all_feats, drop_oth)
   if (!is.null(class_col))  feature_sets$classed <- setdiff(all_feats, drop_cls)
   
@@ -174,6 +183,43 @@ best_feature <- function(data, base_col, group_col, class_col = NULL, other_col 
   
   # Return the data corresponding to the best variant
   return(results[[best_idx]]$data)
+  if (!is.null(other_col)) {
+    feature_sets$other <- setdiff(all_feats, drop_oth)
+  }
+  if (!is.null(class_col)) {
+    feature_sets$classed <- setdiff(all_feats, drop_cls)
+  }
+  
+  # evaluate each via 5-fold CV
+  results <- lapply(names(feature_sets), function(name) {
+    cols    <- feature_sets[[name]]
+    df_sub  <- data[, c(cols, target_col)]
+    task    <- TaskClassif$new(name, df_sub, target = target_col)
+    learner <- lrn("classif.lightgbm", predict_type = "response")
+    resamp  <- rsmp("cv", folds = folds)
+    rr      <- resample(task, learner, resamp, store_models = FALSE)
+    acc     <- rr$aggregate(msr("classif.acc"))
+    list(name = name, acc = acc, data = df_sub)
+  })
+  
+  # calculate accuracy
+  acc_table <- do.call(rbind, lapply(results, function(x) {
+    data.frame(variant = x$name, accuracy = x$acc, row.names = NULL)
+  }))
+  
+  # find the best
+  best_idx <- which.max(acc_table$accuracy)
+  best_data <- results[[best_idx]]$data
+  
+  # report all and return
+  message("Accuracies by variant:")
+  print(acc_table)
+  message(sprintf("Best variant = '%s' (ACC = %f)",
+                  acc_table$variant[best_idx],
+                  acc_table$accuracy[best_idx]))
+  # pick best
+  best <- Reduce(function(a, b) if (a$acc > b$acc) a else b, results)
+  return(best$data)
 }
 
 # use train3 instead of data_all_clean to test this function
@@ -184,7 +230,6 @@ train3 <- train3 %>% filter(dataset == "train") %>% select(-id, -quantity_group,
                                                            -subvillage, -ward, -region, 
                                                            -district_code, -subvillage, -ward, 
                                                            -lga, -region_code, -longitude, -latitude)
-
 # "extraction_type", "extraction_type_group", "extraction_type_class", "extraction_type_other"
 train3 <- train3 %>%
   mutate(

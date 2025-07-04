@@ -19,6 +19,25 @@ set.seed(7832)
 # no learner, no imputation
 train_fi <- fi_boost %>% filter(!is.na(status_group))
 test_fi  <- fi_boost %>% filter( is.na(status_group))
+imputed <- readRDS("data/data_imputed.rds")
+fi_boost <<- imputed
+
+# keep longitude, latitude == NA then drop these 2 columns
+fi_boost <- fi_boost %>%
+  filter(longitude == 0 | latitude == -2e-08) %>%
+  select(-longitude, -latitude)
+
+# only keep region_district
+fi_boost <- fi_boost %>% select(-region, -district_code, -subvillage, -ward, 
+                                -lga, -region_code, -waterpoint_type_group,
+                                -years_in_use) %>%
+                         select_if(~ length(unique(.[!is.na(.)])) > 1)
+
+set.seed(7832)
+
+# no learner, no imputation
+train_fi <- fi_boost %>% filter(dataset == "train") %>% select(-dataset)
+test_fi <- fi_boost %>% filter(dataset == "test") %>% select(-dataset)
 
 # encode
 train_fi$y_num <- as.numeric(train_fi$status_group) - 1
@@ -126,6 +145,7 @@ cv_res <- lgb.cv(
   verbose             = 0,
   stratified          = TRUE      
 )
+
 best_iter   <- cv_res$best_iter
 best_err    <- cv_res$record_evals$valid$multi_error$eval[best_iter]
 lgb_acc_5cv <- 1 - best_err[[1]]
@@ -212,7 +232,6 @@ xgb_acc_5cv   <- 1 - best_err_xgb
 cat("XGBoost 5-fold CV Accuracy:", xgb_acc_5cv, "\n") 
 #0.8040729 (no la, lo) 0.8107301 0.8123702 0.8134758 
 #0.7984866 
-
 
 ## --- CatBoost ----
 Sys.setenv(R_INSTALL_STAGED = "FALSE")
