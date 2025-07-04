@@ -16,9 +16,9 @@ test <- test_data_clean %>%
 test_full <- test_data_clean %>% select(-all_of(drop_cols))
 ##-------- imputation with median and mode --------------
 
-# 2. Compute global medians / modes from the train set only
-gph_med   <- median(train$gps_height,   na.rm = TRUE)
-yiu_med   <- median(train$years_in_use, na.rm = TRUE)
+# 2. Compute global mean / modes from the train set only
+gph_mean   <- mean(train$gps_height,   na.rm = TRUE)
+yiu_mean  <- mean(train$years_in_use, na.rm = TRUE)
 get_mode  <- function(x) { ux <- unique(x); ux[which.max(tabulate(match(x, ux)))] }
 sch_mode  <- get_mode(train$scheme_management)
 pub_mode  <- get_mode(train$public_meeting)
@@ -29,8 +29,8 @@ fund_mode <- get_mode(train$funder)
 # 3. Impute both data frames with those same values
 impute_fun <- function(df) {
   df %>% mutate(
-    gps_height        = replace_na(gps_height,        gph_med),
-    years_in_use      = replace_na(years_in_use,      yiu_med),
+    gps_height        = replace_na(gps_height,        gph_mean),
+    years_in_use      = replace_na(years_in_use,      yiu_mean),
     scheme_management = replace_na(scheme_management, sch_mode),
     public_meeting    = factor(replace_na(public_meeting, pub_mode)),
     permit            = factor(replace_na(permit, perm_mode)),
@@ -63,6 +63,11 @@ align_factors <- function(train, test) {
 test_full_imp <- align_factors(train_imp, test_full_imp)
 sub_imputed <- bind_rows(train_imp, test_imp) # for submodel
 data_imputed <- bind_rows(train_imp, test_full_imp)
+
+saveRDS(data_imputed, "data/data_imputed.rds")
+saveRDS(train_imp, "data/train_imp.rds")
+saveRDS(sub_imputed, "data/sub_imputed.rds")
+saveRDS(test_full_imp, "data/test_full_imp.rds")
 
 # ------------ imputation with mice ---------
 data_all <- bind_rows(
@@ -101,9 +106,7 @@ test_clean  <- mice_imputed %>% filter(source == "test")
 mice_imputed <- mice_imputed %>% 
   select(-`source == "train"`, -`source == "test"`)
 
-saveRDS(data_imputed, "data/data_imputed.rds")
-saveRDS(sub_imputed, "data/sub_imputed.rds")
-saveRDS(test_full_imp, "data/test_full_imp.rds")
+
 saveRDS(mice_imputed, "data/mice_imputed.rds")
 
 
