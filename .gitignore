@@ -10,3 +10,4 @@ experiments/
 *.tif
 
 .RDataTmp*
+.RDataTmp*
