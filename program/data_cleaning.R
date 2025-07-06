@@ -112,114 +112,63 @@ data_all_clean <- data_all_clean %>%
   )
 
 # select best features
-best_feature <- function(data, base_col, group_col, class_col = NULL, other_col = NULL, folds = 5) {
+best_feature <- function(data, base_col, group_col, class_col = NULL, other_col = NULL, 
+         target_col = "status_group", folds = 5) {
   set.seed(7832)
-  target_col <- "status_group"
+  data <- data %>%
+    mutate(across(where(is.character), as.factor))
   
-  # (1) If requested, create the other_col by duplicating group_col
-  # create other_col if requested
-  if (!is.null(other_col)) {
-    data <- data %>% mutate(!!other_col := !!sym(group_col))
-  }
+  # --- This new section automatically defines base and candidate features ---
   
-  # Build lists of features to drop for each variant
-  all_feats <- setdiff(names(data), target_col)
-  # force character → factor
-  data[] <- lapply(data, function(x) if (is.character(x)) factor(x) else x)
+  # Step A: Consolidate all provided candidate columns into one vector
+  candidate_features <- c(base_col, group_col, class_col, other_col)
   
-  # build feature‐drop lists
-  all_feats <- setdiff(names(data), target_col)
-
-  drop_raw  <- c(group_col, class_col, other_col) %>% na.omit()
-  drop_grp  <- c(base_col, class_col, other_col) %>% na.omit()
-  drop_oth  <- if (!is.null(other_col)) c(base_col, group_col, class_col) %>% na.omit() else NULL
-  drop_cls  <- if (!is.null(class_col)) c(base_col, group_col, other_col) %>% na.omit() else NULL
-
-  # assemble available feature sets
-  feature_sets <- list(
-    raw     = setdiff(all_feats, drop_raw),
-    grouped = setdiff(all_feats, drop_grp)
-  )
-
-  if (!is.null(other_col))  feature_sets$other   <- setdiff(all_feats, drop_oth)
-  if (!is.null(class_col))  feature_sets$classed <- setdiff(all_feats, drop_cls)
+  # Step B: Define all features in the dataset (excluding the target)
+  all_features <- setdiff(names(data), target_col)
   
-  # (2) Build a reusable pipeline learner:
-  #     first one-hot encode factor/character columns, then fit xgboost
-  graph <- po("colapply", 
-              affect_columns = selector_type("character"),
-              applicator = as.factor) %>>%
-    po("encode", method = "one-hot") %>>%
-    lrn("classif.xgboost")
+  # Step C: Define base features as all features MINUS the candidates
+  base_features <- setdiff(all_features, candidate_features)
+  print(candidate_features)
+  # ---------------------------------------------------------------------
   
-  glrn  <- GraphLearner$new(graph)
+  results <- list()
   
-  # (3) Prepare 5-fold cross-validation and accuracy measure
+  # --- Define mlr3 components once for efficiency ---
+  graph <- po("encode") %>>% lrn("classif.lightgbm")
+  glrn <- GraphLearner$new(graph)
   resamp <- rsmp("cv", folds = folds)
   msr_acc <- msr("classif.acc")
   
-  # Evaluate each feature variant
-  results <- lapply(names(feature_sets), function(name) {
-    cols   <- feature_sets[[name]]
-    df_sub <- data[, c(cols, target_col)]
-    task   <- TaskClassif$new(name, df_sub, target = target_col)
+  # --- Loop through each candidate feature ---
+  for (candidate in candidate_features) {
     
-    rr  <- mlr3::resample(task, glrn, resamp, store_models = FALSE)
+    message(paste("\nEvaluating feature variant:", candidate))
+    
+    # Define the exact feature set for this run: base features + current candidate
+    current_feature_set <- c(base_features, candidate)
+    
+    # Create a task using only this specific set of features
+    task <- TaskClassif$new(
+      id = paste0("task_with_", candidate),
+      backend = data,
+      target = target_col
+    )$select(cols = current_feature_set)
+    
+    # Run 5-fold cross-validation
+    rr <- mlr3::resample(task, glrn, resamp, store_models = FALSE)
+    
+    # Aggregate accuracy and store the result
     acc <- rr$aggregate(msr_acc)
-    list(name = name, acc = acc, data = df_sub)
-  })
-  
-  # (4) Identify the best variant by accuracy
-  acc_table <- rbindlist(lapply(results, function(x) {
-    data.table(variant = x$name, accuracy = x$acc)
-  }))
-  best_idx  <- which.max(acc_table$accuracy)
-  
-  message("Accuracies by variant:")
-  print(acc_table)
-  message(sprintf("Best variant = '%s' (ACC=%.4f)",
-                  acc_table$variant[best_idx],
-                  acc_table$accuracy[best_idx]))
-  
-  # Return the data corresponding to the best variant
-  return(results[[best_idx]]$data)
-  if (!is.null(other_col)) {
-    feature_sets$other <- setdiff(all_feats, drop_oth)
-  }
-  if (!is.null(class_col)) {
-    feature_sets$classed <- setdiff(all_feats, drop_cls)
+    results[[candidate]] <- acc
   }
   
-  # evaluate each via 5-fold CV
-  results <- lapply(names(feature_sets), function(name) {
-    cols    <- feature_sets[[name]]
-    df_sub  <- data[, c(cols, target_col)]
-    task    <- TaskClassif$new(name, df_sub, target = target_col)
-    learner <- lrn("classif.lightgbm", predict_type = "response")
-    resamp  <- rsmp("cv", folds = folds)
-    rr      <- resample(task, learner, resamp, store_models = FALSE)
-    acc     <- rr$aggregate(msr("classif.acc"))
-    list(name = name, acc = acc, data = df_sub)
-  })
+  # --- Assemble, display, and return the final results table ---
+  acc_table <- data.table(
+    variant_tested = names(results),
+    accuracy = unlist(results)
+  )[order(-accuracy)]
   
-  # calculate accuracy
-  acc_table <- do.call(rbind, lapply(results, function(x) {
-    data.frame(variant = x$name, accuracy = x$acc, row.names = NULL)
-  }))
-  
-  # find the best
-  best_idx <- which.max(acc_table$accuracy)
-  best_data <- results[[best_idx]]$data
-  
-  # report all and return
-  message("Accuracies by variant:")
-  print(acc_table)
-  message(sprintf("Best variant = '%s' (ACC = %f)",
-                  acc_table$variant[best_idx],
-                  acc_table$accuracy[best_idx]))
-  # pick best
-  best <- Reduce(function(a, b) if (a$acc > b$acc) a else b, results)
-  return(best$data)
+  return(acc_table)
 }
 
 # use train3 instead of data_all_clean to test this function
@@ -241,8 +190,11 @@ train3 <- train3 %>%
     )
   )
 
-train3 <- best_feature(data = train3, base_col = "extraction_type", group_col = "extraction_type_group", 
+best_feature(data = train3, base_col = "extraction_type", group_col = "extraction_type_group", 
                        class_col = "extraction_type_class", other_col = "extraction_type_other", folds = 5)
+train3$extraction_type_class <- NULL
+train3$extraction_type <- NULL
+train3$extraction_type_group <- NULL
 colnames(train3)
 
 # "management", "management_group", "management_other"
@@ -255,8 +207,10 @@ train3 <- train3 %>%
     )
   )
 
-train3 <- best_feature(data = train3, base_col = "management", group_col = "management_group",
+best_feature(data = train3, base_col = "management", group_col = "management_group",
                        other_col = "management_other", folds = 5)
+train3$management <- NULL
+train3$management_other <- NULL
 colnames(train3)
 
 # "scheme_management", "scheme_name"
@@ -271,19 +225,88 @@ train3 <- train3 %>% select(-payment)
 colnames(train3)
 
 # "water_quality", "quality_group"
-train3 <- best_feature(data = train3, base_col = "water_quality", group_col = "quality_group", folds = 5)
+unique(data_all_clean[, c("water_quality", "quality_group")])
+train3 <- train3 %>%
+  mutate(
+    water_group = if_else(water_quality == "fluoride abandoned", "fluoride", as.character(water_quality))
+  )
+best_feature(data = train3, base_col = "water_quality", group_col = "quality_group", 
+             other_col = "management_other", folds = 5)
+train3$water_quality <- NULL
+train3$quality_group <- NULL
 colnames(train3)
 
 # "source", "source_type", "source_class"
 unique(data_all_clean[, c("source", "source_type", "source_class")])
-train3 <- best_feature(data = train3, base_col = "source", group_col = "source_type", 
-                       class_col = "source_class", folds = 5)
+train3 <- train3 %>%
+  mutate(
+    source_group = if_else(source == "unknown", "other", as.character(source))
+  )
+best_feature(data = train3, base_col = "source", group_col = "source_type", 
+             class_col = "source_class", other_col = "source_group", folds = 5)
+train3$source <- NULL
+train3$source_type <- NULL
+train3$source_class <- NULL
 colnames(train3)
 
 # "waterpoint_type", "waterpoint_type_group"
 unique(data_all_clean[, c("waterpoint_type", "waterpoint_type_group")])
-train3 <- best_feature(data = train3, base_col = "waterpoint_type", group_col = "waterpoint_type_group", 
-                       folds = 5)
+train3 <- train3 %>%
+  mutate(
+    waterpoint_group = if_else(waterpoint_type == "dam", "other", as.character(waterpoint_type))
+  )
+best_feature(data = train3, base_col = "waterpoint_type", group_col = "waterpoint_type_group", 
+             other_col = "waterpoint_group", folds = 5)
+train3$waterpoint_type_group <- NULL
+train3$waterpoint_group <- NULL
+colnames(train3)
+
+# years_in_use, year_recorded
+best_feature(data = train3, base_col = "year_recorded", group_col = "years_in_use", folds = 5)
+train3$year_recorded <- NULL
+colnames(train3)
+
+# season
+train3 <- train3 %>%
+  mutate(
+    season = case_when(
+      month_recorded %in% c(12, 1, 2) ~ "winter",
+      month_recorded %in% 3:5         ~ "spring",
+      month_recorded %in% 6:8         ~ "summer",
+      month_recorded %in% 9:11        ~ "autumn"
+    ),
+    
+    rainy_season4 = case_when(
+      month_recorded %in% 1:2        ~ "dry short",
+      month_recorded %in% 3:5         ~ "wet long",
+      month_recorded %in% 6:9         ~ "dry long",
+      month_recorded %in% 10:12       ~ "wet short"
+    ),
+    
+    rainy_season2 = case_when(
+      month_recorded %in% 6:10 ~ "dry_season",
+      TRUE                     ~ "wet_season" 
+    )
+  )
+best_feature(data = train3, base_col = "month_recorded", group_col = "season", 
+             other_col = "rainy_season4", class_col = "rainy_season2", folds = 5)
+train3$month_recorded <- NULL
+train3$rainy_season4 <- NULL
+train3$season <- NULL
+
+train3$status_group <- as.factor(train3$status_group)
+train3 <- train3 %>%
+  mutate(across(where(is.character), as.factor))
+task <- as_task_classif(train3, target = "status_group", id = "water_wells_baseline")
+learner <- lrn("classif.lightgbm", predict_type = "prob")
+resampling_cv5 <- rsmp("cv", folds = 5)
+rr <- mlr3::resample(
+  task = task,
+  learner = learner,
+  resampling = resampling_cv5,
+  store_models = FALSE
+)
+accuracy_score <- rr$aggregate(msr("classif.acc"))
 
 # delete some columns
 colnames(data_all_clean)
