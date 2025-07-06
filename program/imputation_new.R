@@ -3,7 +3,6 @@ print(.libPaths())
 
 library(future)
 plan(multisession)
-
 library(mlr3)
 library(mlr3learners)
 library(mlr3pipelines)
@@ -14,8 +13,8 @@ set.seed(7832)
 # Daten
 data_clean <- readRDS("data/fi_clean.rds")
 train_data_clean <- data_clean %>% filter(dataset == "train")
-drop_cols <- c("longitude", "latitude", "lga", "ward", "subvillage",
-               "district_code", "dataset", "region_code")         
+drop_cols <- c("longitude", "latitude", 
+               "dataset")         
 train  <- train_data_clean %>% 
           select(-all_of(drop_cols)) %>% 
          mutate(across(where(is.character), as.factor))
@@ -58,10 +57,10 @@ for (name in names(learners)) {
   results[[name]] = acc
 }
 
-print(results) #ranger:  0.7918795 
-               #xgboost 0.7943402
-               #rpart 0.6977634
-               #knn:  0.7538386
+print(results) #ranger: 0.796211 
+               #xgboost 
+               #rpart 0.6977634(重新整理列之前)
+               #knn:  0.7538386(重新整理列之前)
 
 #-------------- 2. Pipeline (median + mode + encoding) + verschiedene Learner ----------
 for (name in names(learners)) {
@@ -82,9 +81,11 @@ for (name in names(learners)) {
 
 print(results_median)
 
-#ranger: 0.7901771 
-#xgboost: 0.7938514 
-#rpart: 0.697696
-#knn: 0.7534341
+#ranger:  0.7965651  
+#xgboost: 
+#rpart: 0.697696(重新整理列之前)
+#knn: 0.7534341(重新整理列之前)
+
+
 
 

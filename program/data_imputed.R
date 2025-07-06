@@ -2,9 +2,7 @@ data_clean <- readRDS("data/fi_clean.rds")
 train_data_clean <- data_clean %>% filter(dataset == "train")
 test_data_clean <- data_clean %>% filter(dataset == "test")
 
-
-drop_cols <- c("longitude", "latitude", "lga", "ward", "subvillage",
-               "district_code", "dataset", "region_code")         
+drop_cols <- c("longitude", "latitude","dataset")        
 
 train  <- train_data_clean %>% select(-all_of(drop_cols))
 test <- test_data_clean %>% 
@@ -17,8 +15,9 @@ test_full <- test_data_clean %>% select(-all_of(drop_cols))
 ##-------- imputation with median and mode --------------
 
 # 2. Compute global mean / modes from the train set only
-gph_mean   <- mean(train$gps_height,   na.rm = TRUE)
-yiu_mean  <- mean(train$years_in_use, na.rm = TRUE)
+gph_median   <- median(train$gps_height,   na.rm = TRUE)
+yiu_median  <- median(train$years_in_use, na.rm = TRUE)
+construction_median <- median(train$construction_year, na.rm = TRUE)
 get_mode  <- function(x) { ux <- unique(x); ux[which.max(tabulate(match(x, ux)))] }
 sch_mode  <- get_mode(train$scheme_management)
 pub_mode  <- get_mode(train$public_meeting)
@@ -31,7 +30,7 @@ impute_fun <- function(df) {
   df %>% mutate(
     gps_height        = replace_na(gps_height,        gph_mean),
     years_in_use      = replace_na(years_in_use,      yiu_mean),
-    scheme_management = replace_na(scheme_management, sch_mode),
+    construction_year = replace_na(construction_year, construction_mean),
     public_meeting    = factor(replace_na(public_meeting, pub_mode)),
     permit            = factor(replace_na(permit, perm_mode)),
     installer         = replace_na(installer, inst_mode),
@@ -43,6 +42,7 @@ impute_fun <- function(df) {
 train_imp <- impute_fun(train)
 test_imp  <- impute_fun(test)
 test_full_imp <- impute_fun(test_full)
+
 
 #Faktor-Levels in beiden Datensätzen angleichen
 
@@ -68,6 +68,7 @@ saveRDS(data_imputed, "data/data_imputed.rds")
 saveRDS(train_imp, "data/train_imp.rds")
 saveRDS(sub_imputed, "data/sub_imputed.rds")
 saveRDS(test_full_imp, "data/test_full_imp.rds")
+
 
 # ------------ imputation with mice ---------
 data_all <- bind_rows(
