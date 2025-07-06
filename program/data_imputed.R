@@ -15,37 +15,45 @@ test_full <- test_data_clean %>% select(-all_of(drop_cols))
 ##-------- imputation with median and mode --------------
 
 # 2. Compute global mean / modes from the train set only
-gph_median   <- median(train$gps_height,   na.rm = TRUE)
-yiu_median  <- median(train$years_in_use, na.rm = TRUE)
+get_mode <- function(x) {
+  x <- x[!is.na(x)]
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+gph_median         <- median(train$gps_height, na.rm = TRUE)
+yiu_median         <- median(train$years_in_use, na.rm = TRUE)
 construction_median <- median(train$construction_year, na.rm = TRUE)
-get_mode  <- function(x) { ux <- unique(x); ux[which.max(tabulate(match(x, ux)))] }
-sch_mode  <- get_mode(train$scheme_management)
+
+sch_mode  <- get_mode(train$scheme_name)
 pub_mode  <- get_mode(train$public_meeting)
 perm_mode <- get_mode(train$permit)
 inst_mode <- get_mode(train$installer)
 fund_mode <- get_mode(train$funder)
-
 # 3. Impute both data frames with those same values
 impute_fun <- function(df) {
   df %>% mutate(
-    gps_height        = replace_na(gps_height,        gph_mean),
-    years_in_use      = replace_na(years_in_use,      yiu_mean),
-    construction_year = replace_na(construction_year, construction_mean),
+    gps_height        = replace_na(gps_height,        gph_median),
+    years_in_use      = replace_na(years_in_use,      yiu_median),
+    construction_year = replace_na(construction_year, construction_median),
     public_meeting    = factor(replace_na(public_meeting, pub_mode)),
     permit            = factor(replace_na(permit, perm_mode)),
     installer         = replace_na(installer, inst_mode),
     funder            = replace_na(funder, fund_mode),
+    scheme_name = factor(replace_na(as.character(scheme_name), sch_mode)),
     across(where(is.character), as.factor)
   )
 }
+
 
 train_imp <- impute_fun(train)
 test_imp  <- impute_fun(test)
 test_full_imp <- impute_fun(test_full)
 
+test_full_imp$scheme_name[is.na(test_full_imp$scheme_name)] <- sch_mode
+test_full_imp$scheme_name <- factor(test_full_imp$scheme_name)
 
 #Faktor-Levels in beiden Datensätzen angleichen
-
 # alle Spalten im test-set so anpassen, dass die Levels wie im train sind
 align_factors <- function(train, test) {
   common_names <- intersect(names(train), names(test))
@@ -69,12 +77,12 @@ saveRDS(train_imp, "data/train_imp.rds")
 saveRDS(sub_imputed, "data/sub_imputed.rds")
 saveRDS(test_full_imp, "data/test_full_imp.rds")
 
-
 # ------------ imputation with mice ---------
 data_all <- bind_rows(
   train_imp %>% mutate(source == "train"),   # still has status_group
   test_imp  %>% mutate(source == "test")     # status_group is NA
 )
+print(sch_mode)
 
 ##########
 library(mice)
@@ -135,6 +143,7 @@ new <- test_full_imp %>%
 
 # Compare the two cleaned-up data frames
 compare(old, new, max_diffs = Inf)
+
 
 
 
