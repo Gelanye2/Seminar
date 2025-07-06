@@ -146,3 +146,69 @@ result_imp <- data.frame(
 )
 
 saveRDS(result_imp, "data/predictions_with_imp.rds")
+
+
+scenarios <- list(
+  baseline = character(0),
+  without_years_in_use = "years_in_use",
+  without_month_recorded = "month_recorded",
+  without_both = c("years_in_use", "month_recorded")
+)
+
+results_summary <- data.frame(
+  scenario = character(),
+  classif.acc = numeric(),
+  classif.bacc = numeric(),
+  stringsAsFactors = FALSE
+)
+
+graph <- po("colapply",
+            param_vals = list(
+              applicator = function(x) if (is.character(x)) as.factor(x) else x,
+              affect_columns = selector_type("character")
+            )) %>>%
+  po("removeconstants") %>>%
+  po("encode", method = "treatment") %>>%
+  lrn("classif.xgboost",
+      predict_type = "response",
+      nrounds = 1000L,
+      eta = 0.1,
+      max_depth = 6,
+      subsample = 0.8,
+      colsample_bytree = 0.8,
+      nthread = 4)
+
+glrn_imp <- GraphLearner$new(graph)
+
+resampling <- rsmp("cv", folds = 5)
+
+
+for (scenario_name in names(scenarios)) {
+  
+  cols_to_drop <- scenarios[[scenario_name]]
+
+  train_data_scenario <- df_imp[, !..cols_to_drop]
+
+  task_scenario <- TaskClassif$new(
+    id = scenario_name,
+    backend = train_data_scenario,
+    target = "status_group"
+  )
+
+  set.seed(123)
+  rr_scenario <- mlr3::resample(task_scenario, glrn_imp, resampling, store_models = FALSE)
+
+  acc <- rr_scenario$aggregate(msr("classif.acc"))
+  bacc <- rr_scenario$aggregate(msr("classif.bacc"))
+
+  cat(paste("  Accuracy (acc):", round(acc, 6), "\n"))
+  cat(paste("  Balanced Accuracy (bacc):", round(bacc, 6), "\n"))
+
+  results_summary <- rbind(results_summary, data.frame(
+    scenario = scenario_name,
+    classif.acc = acc,
+    classif.bacc = bacc
+  ))
+}
+
+print(results_summary)
