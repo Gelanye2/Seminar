@@ -50,9 +50,6 @@ train_imp <- impute_fun(train)
 test_imp  <- impute_fun(test)
 test_full_imp <- impute_fun(test_full)
 
-test_full_imp$scheme_name[is.na(test_full_imp$scheme_name)] <- sch_mode
-test_full_imp$scheme_name <- factor(test_full_imp$scheme_name)
-
 #Faktor-Levels in beiden Datensätzen angleichen
 # alle Spalten im test-set so anpassen, dass die Levels wie im train sind
 align_factors <- function(train, test) {
@@ -71,6 +68,11 @@ align_factors <- function(train, test) {
 test_full_imp <- align_factors(train_imp, test_full_imp)
 sub_imputed <- bind_rows(train_imp, test_imp) # for submodel
 data_imputed <- bind_rows(train_imp, test_full_imp)
+
+data_imputed$scheme_name[is.na(data_imputed$scheme_name)] <- sch_mode
+data_imputed$scheme_name <- factor(data_imputed$scheme_name)
+test_full_imp$scheme_name[is.na(test_full_imp$scheme_name)] <- sch_mode
+test_full_imp$scheme_name <- factor(test_full_imp$scheme_name)
 
 saveRDS(data_imputed, "data/data_imputed.rds")
 saveRDS(train_imp, "data/train_imp.rds")
