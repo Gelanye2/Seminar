@@ -194,7 +194,7 @@ best_feature(data = train3, base_col = "extraction_type", group_col = "extractio
                        class_col = "extraction_type_class", other_col = "extraction_type_other", folds = 5)
 train3$extraction_type_class <- NULL
 train3$extraction_type <- NULL
-train3$extraction_type_group <- NULL
+train3$extraction_type_other <- NULL
 colnames(train3)
 
 # "management", "management_group", "management_other"
@@ -210,7 +210,7 @@ train3 <- train3 %>%
 best_feature(data = train3, base_col = "management", group_col = "management_group",
                        other_col = "management_other", folds = 5)
 train3$management <- NULL
-train3$management_other <- NULL
+train3$management_group <- NULL
 colnames(train3)
 
 # "scheme_management", "scheme_name"
@@ -228,11 +228,12 @@ colnames(train3)
 unique(data_all_clean[, c("water_quality", "quality_group")])
 train3 <- train3 %>%
   mutate(
-    water_group = if_else(water_quality == "fluoride abandoned", "fluoride", as.character(water_quality))
+    water_group = if_else(water_quality == "fluoride abandoned", "fluoride", 
+                          as.character(water_quality))
   )
 best_feature(data = train3, base_col = "water_quality", group_col = "quality_group", 
-             other_col = "management_other", folds = 5)
-train3$water_quality <- NULL
+             other_col = "water_group", folds = 5)
+train3$water_group <- NULL
 train3$quality_group <- NULL
 colnames(train3)
 
