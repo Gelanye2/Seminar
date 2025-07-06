@@ -49,32 +49,34 @@ graph <- po("colapply",  # char -> factor
   po("removeconstants") %>>%
   po("encode", method = "treatment") %>>%
   lrn("classif.xgboost",
-      predict_type          = "response",
-      nrounds      = 500
+      id               = "xgb", 
+      predict_type     = "prob",
+      nrounds          = 2000L,
+      early_stopping_rounds = 50 
   )
 
 base_lrn <- GraphLearner$new(graph)
+set_validate(base_lrn, learner_id = "xgb", validate = "predefined")
 
 ps <- ps(
-  "classif.xgboost.eta"             = p_dbl(0.1, 0.2, logscale = TRUE),
-  "classif.xgboost.nrounds"         = p_int(100, 500),
-  "classif.xgboost.max_depth"       = p_int(6, 12),
-  "classif.xgboost.subsample"       = p_dbl(0.9, 1),
-  "classif.xgboost.colsample_bytree"= p_dbl(0.9, 1),
-  "classif.xgboost.lambda"          = p_dbl(0.1, 5, logscale = TRUE),
-  "classif.xgboost.alpha"           = p_dbl(0.1, 5, logscale = TRUE)
+  "xgb.eta"             = p_dbl(0.1, 0.2, logscale = TRUE),
+  "xgb.max_depth"       = p_int(6, 12),
+  "xgb.subsample"       = p_dbl(0.5, 1),
+  "xgb.colsample_bytree"= p_dbl(0.5, 1),
+  "xgb.lambda"          = p_dbl(0.1, 5, logscale = TRUE),
+  "xgb.alpha"           = p_dbl(0.1, 5, logscale = TRUE)
 )
 
 auto <- AutoTuner$new(
   learner      = base_lrn,
-  resampling   = rsmp("cv", folds = 3), 
+  resampling   = rsmp("cv", folds = 5), 
   measure      = msr("classif.acc"),
   search_space = ps,
-  tuner        = tnr("random_search"),            
-  terminator   = trm("evals", n_evals = 30)  
+  tuner        = tnr("mbo"),            
+  terminator   = trm("evals", n_evals = 100)
 )
 
-rr <- mlr3::resample(task_ll, auto, rsmp("cv", folds = 3))
+rr <- mlr3::resample(task_ll, auto, rsmp("cv", folds = 5))
 acc  <- rr$aggregate(msr("classif.acc"))
 bacc <- rr$aggregate(msr("classif.bacc"))
 
@@ -87,4 +89,4 @@ result_list <- list(
   best_params       = best_vals
 )
 
-saveRDS(result_list, file = "xgb_tuning_results.rds")
+saveRDS(result_list, file = "data/xgb_tuning_results.rds")
