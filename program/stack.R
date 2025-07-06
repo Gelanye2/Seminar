@@ -146,6 +146,7 @@ print("Benchmark finished.")
 
 # Review aggregated results to select the best model
 print(bmr$aggregate(msrs(c("classif.acc", "classif.bacc"))))
+# 0.8072171    0.6556998
 
 # 4. FINAL MODEL TRAINING AND PREDICTION
 # ==============================
