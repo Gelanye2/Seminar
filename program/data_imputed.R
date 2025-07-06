@@ -30,6 +30,7 @@ pub_mode  <- get_mode(train$public_meeting)
 perm_mode <- get_mode(train$permit)
 inst_mode <- get_mode(train$installer)
 fund_mode <- get_mode(train$funder)
+
 # 3. Impute both data frames with those same values
 impute_fun <- function(df) {
   df %>% mutate(
@@ -67,12 +68,22 @@ align_factors <- function(train, test) {
 # Anwendung
 test_full_imp <- align_factors(train_imp, test_full_imp)
 sub_imputed <- bind_rows(train_imp, test_imp) # for submodel
-data_imputed <- bind_rows(train_imp, test_full_imp)
 
-data_imputed$scheme_name[is.na(data_imputed$scheme_name)] <- sch_mode
-data_imputed$scheme_name <- factor(data_imputed$scheme_name)
-test_full_imp$scheme_name[is.na(test_full_imp$scheme_name)] <- sch_mode
-test_full_imp$scheme_name <- factor(test_full_imp$scheme_name)
+# 7. Impute scheme_name danach separat (nach Level-Angleichung)
+impute_scheme_name <- function(df) {
+  df$scheme_name <- as.character(df$scheme_name)
+  df$scheme_name[is.na(df$scheme_name)] <- as.character(sch_mode)
+  df$scheme_name <- factor(df$scheme_name, levels = levels(train_imp$scheme_name))
+  return(df)
+}
+
+train_imp       <- impute_scheme_name(train_imp)
+test_imp        <- impute_scheme_name(test_imp)
+test_full_imp   <- impute_scheme_name(test_full_imp)
+
+# 8. Kombinierte Daten erzeugen
+sub_imputed   <- bind_rows(train_imp, test_imp)        # für Teildatenmodell
+data_imputed  <- bind_rows(train_imp, test_full_imp)   # vollständiger Testsatz
 
 saveRDS(data_imputed, "data/data_imputed.rds")
 saveRDS(train_imp, "data/train_imp.rds")
