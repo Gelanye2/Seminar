@@ -5,11 +5,18 @@ imputed <- readRDS("data/data_imputed.rds") # all:train + test
 test_full_imp <- readRDS("data/test_full_imp.rds")
 test_all <- readRDS("data/test_all.rds")
 
+library(future)
+library(mlr3)
+
+# Anzahl Worker festlegen (z. B. 4 Kerne)
+plan(multisession, workers = 16)  
+
+handlers("txtprogressbar")
+
 # keep region_district
 # ---- No imputation----
 df_fi <- fi_clean %>%
-  select(-region, -district_code, -subvillage, -ward, 
-         -lga, -region_code, -longitude, -latitude)
+  select(-dataset)
 
 train_fi <- df_fi %>% filter(!is.na(status_group))
 test_fi  <- df_fi %>% filter( is.na(status_group))
@@ -37,13 +44,15 @@ graph <-
   po("encode", method = "treatment") %>>%
   lrn("classif.xgboost",
       predict_type            = "response",
-      nrounds                 = 1000L,
-      eta                     = 0.1,
+      nrounds                 = 300L,
+      eta                     = 0.05,
       max_depth               = 6,
       subsample               = 0.8,
       colsample_bytree        = 0.8,
-      nthread          = 4
-  )
+      nthread          = 4,
+      verbose          = 1,
+      print_every_n    = 50
+    )
 
 
 # Wrap as GraphLearner
@@ -77,6 +86,8 @@ result_NA <- data.frame(
 )
 
 saveRDS(result_NA, "data/predictions_with_NA.rds")
+write.csv(result_NA, "subxg.csv", row.names = FALSE)
+
 
 # ---- data_imputed and region_district----
 df_imp <<- imputed
