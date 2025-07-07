@@ -1,17 +1,35 @@
 data_clean <- readRDS("data/fi_clean.rds")
 train_data_clean <- data_clean %>% filter(dataset == "train")
 test_data_clean <- data_clean %>% filter(dataset == "test")
+       
+drop_cols <- c("dataset")
 
-drop_cols <- c("longitude","latitude","dataset")        
+# 1. Latitude/Longitude korrigieren (NA setzen bei 0/-2e-08)
+train_data_clean <- train_data_clean %>%
+  mutate(
+    latitude  = ifelse(latitude %in% c(0, -2e-08), NA, latitude),
+    longitude = ifelse(longitude %in% c(0, -2e-08), NA, longitude)
+  )
 
-train  <- train_data_clean %>% select(-all_of(drop_cols))
+test_data_clean <- test_data_clean %>%
+  mutate(
+    latitude  = ifelse(latitude %in% c(0, -2e-08), NA, latitude),
+    longitude = ifelse(longitude %in% c(0, -2e-08), NA, longitude)
+  )
+
+
+# 2. Jetzt Spalten entfernen
+drop_cols <- c("dataset")  # latitude und longitude bleiben jetzt erhalten!
+train      <- train_data_clean %>% select(-all_of(drop_cols))
+test_full  <- test_data_clean %>% select(-all_of(drop_cols))
+
+# test mit nur invaliden Koordinaten extrahieren
 test <- test_data_clean %>% 
   filter(
-    latitude  ==  0      | latitude  == -2e-08 |
-      longitude ==  0      | longitude == -2e-08
-  )   %>% 
-  select(-all_of(drop_cols)) 
-test_full <- test_data_clean %>% select(-all_of(drop_cols))
+    is.na(latitude) | is.na(longitude)
+  ) %>% 
+  select(-all_of(drop_cols))
+
 ##-------- imputation with median and mode --------------
 
 # 2. Compute global mean / modes from the train set only
@@ -24,6 +42,8 @@ get_mode <- function(x) {
 gph_median         <- median(train$gps_height, na.rm = TRUE)
 yiu_median         <- median(train$years_in_use, na.rm = TRUE)
 construction_median <- median(train$construction_year, na.rm = TRUE)
+latitude_median <- median(train$latitude, na.rm = TRUE)
+longitude_median <- median(train$longitude, na.rm = TRUE)
 
 sch_mode  <- get_mode(train$scheme_name)
 pub_mode  <- get_mode(train$public_meeting)
@@ -37,6 +57,8 @@ impute_fun <- function(df) {
     gps_height        = replace_na(gps_height,        gph_median),
     years_in_use      = replace_na(years_in_use,      yiu_median),
     construction_year = replace_na(construction_year, construction_median),
+    latitude          = replace_na(latitude,          latitude_median),
+    longitude         = replace_na(longitude,         longitude_median),
     public_meeting    = factor(replace_na(public_meeting, pub_mode)),
     permit            = factor(replace_na(permit, perm_mode)),
     installer         = replace_na(installer, inst_mode),
@@ -85,7 +107,13 @@ test_full_imp   <- impute_scheme_name(test_full_imp)
 sub_imputed   <- bind_rows(train_imp, test_imp)        # für Teildatenmodell
 data_imputed  <- bind_rows(train_imp, test_full_imp)   # vollständiger Testsatz
 
+saveRDS(data_imputed, "data/data_imputed_with_la.rds")
+saveRDS(train_imp, "data/train_imp_with_la.rds")
+saveRDS(sub_imputed, "data/sub_imputed_with_la.rds")
+saveRDS(test_full_imp, "data/test_full_imp_with_la.rds")
+
 saveRDS(data_imputed, "data/data_imputed.rds")
 saveRDS(train_imp, "data/train_imp.rds")
 saveRDS(sub_imputed, "data/sub_imputed.rds")
 saveRDS(test_full_imp, "data/test_full_imp.rds")
+
