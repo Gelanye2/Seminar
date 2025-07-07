@@ -9,7 +9,7 @@ library(future)
 plan(multisession, workers = 16)
 set.seed(7832)
 
-fi_clean <- readRDS("data/fi_clean.rds") # no imp and all
+# fi_clean <- readRDS("data/fi_clean.rds") # no imp and all
 imputed <- readRDS("data/data_imputed.rds") # all:train + test
 #sub_imputed <- readRDS("data/sub_imputed.rds") # train + test without longtitude and latitude
 test_full_imp <- readRDS("data/test_full_imp.rds")
@@ -24,6 +24,9 @@ test_all <- readRDS("data/test_all.rds")
 df_imp <- imputed
 train_imp <- df_imp %>% filter(!is.na(status_group))
 test_imp  <- test_full_imp
+
+# train_imp <- fi_clean %>% filter(!is.na(status_group))
+# test_imp  <- fi_clean %>% filter( is.na(status_group))
 
 # Ensure target is a factor for classification
 train_imp$status_group <- as.factor(train_imp$status_group)
