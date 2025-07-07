@@ -2,7 +2,7 @@ data_clean <- readRDS("data/fi_clean.rds")
 train_data_clean <- data_clean %>% filter(dataset == "train")
 test_data_clean <- data_clean %>% filter(dataset == "test")
 
-drop_cols <- c("longitude", "latitude","dataset")        
+drop_cols <- c("longitude","latitude","dataset")        
 
 train  <- train_data_clean %>% select(-all_of(drop_cols))
 test <- test_data_clean %>% 
@@ -89,74 +89,3 @@ saveRDS(data_imputed, "data/data_imputed.rds")
 saveRDS(train_imp, "data/train_imp.rds")
 saveRDS(sub_imputed, "data/sub_imputed.rds")
 saveRDS(test_full_imp, "data/test_full_imp.rds")
-
-# ------------ imputation with mice ---------
-data_all <- bind_rows(
-  train_imp %>% mutate(source == "train"),   # still has status_group
-  test_imp  %>% mutate(source == "test")     # status_group is NA
-)
-print(sch_mode)
-
-##########
-library(mice)
-
-# 2a. A dry-run to grab default settings
-ini  <- mice(data_all, maxit = 0)
-
-# 2b. Copy the defaults
-meth <- ini$method
-pred <- ini$predictorMatrix
-
-# 2c. Tell mice not to impute the target
-meth["status_group"] <- ""     # ""  = leave as is (don’t touch)
-pred[,  "status_group"] <- 0    # don’t use it to predict others either
-
-#########
-imp <- mice(
-  data_all,
-  m      = 5,          # 5 completed data sets (common default)
-  maxit  = 5,          # iterations per chain; raise if convergence is slow
-  method = meth,
-  predictorMatrix = pred,
-  seed   = 2024
-)
-
-mice_imputed <- complete(imp, action = 1)   # pick the first of the m imputations
-
-train_clean <- mice_imputed %>% filter(source == "train" & !is.na(status_group))
-test_clean  <- mice_imputed %>% filter(source == "test")
-mice_imputed <- mice_imputed %>% 
-  select(-`source == "train"`, -`source == "test"`)
-
-
-saveRDS(mice_imputed, "data/mice_imputed.rds")
-
-
-#####
-## check if test_full_imp identical to test_data_clean (order)
-identical(
-  as.data.frame(test_all) %>%
-    select(extraction_type, management, region, basin,population) %>%
-    mutate(across(everything(), as.character)),
-  
-  as.data.frame(test_full_imp) %>%
-    select(extraction_type, management, region, basin,population) %>%
-    mutate(across(everything(), as.character))
-)
-
-library(waldo)
-
-old <- test_all %>% 
-  select(extraction_type, management, region, basin,population,public_meeting) %>%
-  mutate(across(everything(), as.character))
-
-new <- test_full_imp %>%
-  select(extraction_type, management, region, basin,population,public_meeting) %>%
-  mutate(across(everything(), as.character))
-
-# Compare the two cleaned-up data frames
-compare(old, new, max_diffs = Inf)
-
-
-
-
