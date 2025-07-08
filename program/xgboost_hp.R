@@ -57,13 +57,13 @@ graph <- po("colapply",  # char -> factor
 base_lrn <- GraphLearner$new(graph)
 
 search_space <- paradox::ps(
-  "classif.xgboost.nrounds"        = p_int(100, 2000),
-  "classif.xgboost.eta"            = p_dbl(1e-3, 0.3, logscale = TRUE),
-  "classif.xgboost.max_depth"      = p_int(3, 15),
-  "classif.xgboost.subsample"      = p_dbl(0.3, 1),
-  "classif.xgboost.colsample_bytree" = p_dbl(0.3, 1),
-  "classif.xgboost.lambda"         = p_dbl(1e-3, 10, logscale = TRUE),
-  "classif.xgboost.alpha"          = p_dbl(1e-3, 10, logscale = TRUE)
+  "classif.xgboost.nrounds"        = p_int(800, 1200),
+  "classif.xgboost.eta"            = p_dbl(0.03, 0.06, logscale = TRUE),
+  "classif.xgboost.max_depth"      = p_int(4, 8),
+  "classif.xgboost.subsample"      = p_dbl(0.7, 0.9),
+  "classif.xgboost.colsample_bytree" = p_dbl(0.7, 0.9),
+  "classif.xgboost.lambda"         = p_dbl(1, 5, logscale = TRUE),
+  "classif.xgboost.alpha"          = p_dbl(0, 2, logscale = TRUE)
 )
 
 auto <- AutoTuner$new(
