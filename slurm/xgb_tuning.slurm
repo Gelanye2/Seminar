@@ -2,9 +2,9 @@
 #SBATCH --job-name=xgb_hp
 #SBATCH --output=../result/xgb_tuning_%j.out
 #SBATCH --error=../result/xgb_tuning_%j.err
-#SBATCH --time=04:00:00
-#SBATCH --cpus-per-task=64
-#SBATCH --mem=128G
+#SBATCH --time=06:00:00
+#SBATCH --cpus-per-task=128
+#SBATCH --mem=64G
 #SBATCH --partition=cm4_inter
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=Ju.Haoran@campus.lmu.de
