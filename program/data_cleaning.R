@@ -142,7 +142,7 @@ data_all_clean <- data_all_clean %>% select(-id, -quantity_group,
                                            -payment, -quality_group, -source,
                                            -source_type, -source_class,
                                            -waterpoint_type_group, -year_recorded,
-                                           -month_recorded)
+                                           -month_recorded, -construction_year)
 
 # keep only gps height > 0
 data_all_clean <- data_all_clean %>%
