@@ -71,7 +71,7 @@ auto <- AutoTuner$new(
   resampling   = rsmp("cv", folds = 5),
   measure      = msr("classif.acc"),
   search_space = search_space,
-  tuner        = tnr("random_search"),
+  tuner        = tnr("mbo"),
   terminator   = trm("evals", n_evals = 100)
 )
 
