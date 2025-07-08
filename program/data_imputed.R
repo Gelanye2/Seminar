@@ -4,7 +4,7 @@
 data_clean <- readRDS("data/fi_clean.rds")
 train_data_clean <- data_clean %>% filter(dataset == "train")
 test_data_clean <- data_clean %>% filter(dataset == "test")
-test_full <- readRDS("data/test")
+test_full <- readRDS("data/test_all.rds")
 drop_cols <- c("dataset")
 
 # 1. Latitude/Longitude korrigieren (NA setzen bei 0/-2e-08)
@@ -44,7 +44,7 @@ get_mode <- function(x) {
 
 gph_median         <- median(train$gps_height, na.rm = TRUE)
 yiu_median         <- median(train$years_in_use, na.rm = TRUE)
-construction_median <- median(train$construction_year, na.rm = TRUE)
+
 latitude_median <- median(train$latitude, na.rm = TRUE)
 longitude_median <- median(train$longitude, na.rm = TRUE)
 
@@ -59,7 +59,7 @@ impute_fun <- function(df) {
   df %>% mutate(
     gps_height        = replace_na(gps_height,        gph_median),
     years_in_use      = replace_na(years_in_use,      yiu_median),
-    construction_year = replace_na(construction_year, construction_median),
+
     latitude          = replace_na(latitude,          latitude_median),
     longitude         = replace_na(longitude,         longitude_median),
     public_meeting    = factor(replace_na(public_meeting, pub_mode)),
@@ -123,7 +123,7 @@ test_data_clean <- data_clean %>% filter(dataset == "test")
 
 drop_cols <- c("dataset")
 
-# 1. Latitude/Longitude NICHT korrigieren (0/-2e-08 behalten)
+------------- # 1. Latitude/Longitude NICHT korrigieren (0/-2e-08 behalten) ---------
 
 # 2. Spalten entfernen
 drop_cols <- c("dataset")  # latitude und longitude bleiben erhalten
@@ -159,7 +159,7 @@ get_mode <- function(x) {
 
 gph_median          <- median(train$gps_height, na.rm = TRUE)
 yiu_median          <- median(train$years_in_use, na.rm = TRUE)
-construction_median <- median(train$construction_year, na.rm = TRUE)
+
 
 sch_mode  <- get_mode(train$scheme_name)
 pub_mode  <- get_mode(train$public_meeting)
@@ -172,7 +172,7 @@ impute_fun <- function(df) {
   df %>% mutate(
     gps_height        = replace_na(gps_height,        gph_median),
     years_in_use      = replace_na(years_in_use,      yiu_median),
-    construction_year = replace_na(construction_year, construction_median),
+   
     public_meeting    = factor(replace_na(public_meeting, pub_mode)),
     permit            = factor(replace_na(permit, perm_mode)),
     installer         = replace_na(installer, inst_mode),
