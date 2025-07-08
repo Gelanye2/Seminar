@@ -51,19 +51,19 @@ graph <- po("colapply",  # char -> factor
   po("removeconstants") %>>%
   po("encode", method = "treatment") %>>%
   lrn("classif.xgboost",
-      predict_type          = "response",
-      nrounds = 2,
-      nthread =8)
+      predict_type = "prob",
+      nthread      = 8)
 
 base_lrn <- GraphLearner$new(graph)
 
 search_space <- paradox::ps(
-  "classif.xgboost.eta"             = p_dbl(0.1, 0.2, logscale = TRUE),
-  "classif.xgboost.max_depth"       = p_int(6, 12),
-  "classif.xgboost.subsample"       = p_dbl(0.5, 1),
-  "classif.xgboost.colsample_bytree"= p_dbl(0.5, 1),
-  "classif.xgboost.lambda"          = p_dbl(0.1, 5, logscale = TRUE),
-  "classif.xgboost.alpha"           = p_dbl(0.1, 5, logscale = TRUE)
+  "classif.xgboost.nrounds"        = p_int(100, 2000),
+  "classif.xgboost.eta"            = p_dbl(1e-3, 0.3, logscale = TRUE),
+  "classif.xgboost.max_depth"      = p_int(3, 15),
+  "classif.xgboost.subsample"      = p_dbl(0.3, 1),
+  "classif.xgboost.colsample_bytree" = p_dbl(0.3, 1),
+  "classif.xgboost.lambda"         = p_dbl(1e-3, 10, logscale = TRUE),
+  "classif.xgboost.alpha"          = p_dbl(1e-3, 10, logscale = TRUE)
 )
 
 auto <- AutoTuner$new(
