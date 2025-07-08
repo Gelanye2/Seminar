@@ -133,7 +133,7 @@ data_all_clean <- data_all_clean %>%
 
 data_all_clean <- data_all_clean %>% select(-id, -quantity_group, 
                                            -recorded_by, -amount_tsh,
-                                           -wpt_name, num_private,
+                                           -wpt_name, -num_private,
                                            -subvillage, -ward, -region, 
                                            -district_code, -subvillage, -ward, 
                                            -lga, -region_code, -extraction_type_class,
