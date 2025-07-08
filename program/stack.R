@@ -1,12 +1,13 @@
 # 0. SETUP AND DATA LOADING
 # ==================================
 # Ensure required packages are loaded
+.libPaths("/dss/dsshome1/01/ra59qow2/R/x86_64-pc-linux-gnu-library/4.3")
 library(mlr3verse)
 library(mlr3pipelines)
 library(mlr3learners)
 library(dplyr)
 library(future)
-plan(multisession, workers = 16)
+plan(multisession, workers = 8)
 set.seed(7832)
 
 # fi_clean <- readRDS("data/fi_clean.rds") # no imp and all
@@ -65,7 +66,7 @@ lrn_xgb <- as_learner(
         max_depth = 6,
         subsample = 0.8,
         colsample_bytree = 0.8,
-        nthread = 4
+        nthread = 8
     )
 )
 
@@ -79,7 +80,8 @@ lrn_ranger <- as_learner(
         predict_type = "prob",
         num.trees = 500,
         mtry = floor(sqrt(ncol(train_imp) - 1)), # ncol-1 for target
-        min.node.size = 1
+        min.node.size = 1,
+        num.threads = 8
     )
 )
 
@@ -108,8 +110,8 @@ lrn_ranger <- as_learner(
 base_learners <- list(
   lrn_xgb,
   lrn_ranger
- # lrn_kknn,
- # lrn_rpart
+  # lrn_kknn,
+  # lrn_rpart
 )
 
 # 3. DEFINE AND EVALUATE STACKING MODELS
