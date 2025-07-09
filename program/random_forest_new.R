@@ -5,9 +5,6 @@ imputed <- readRDS("data/data_imputed.rds") # all:train + test
 test_full_imp <- readRDS("data/test_full_imp.rds")
 test_all <- readRDS("data/test_all.rds")
 
-#library(future)
-#plan(sequential)  
-
 # ----------- 1. ranger, with imputation ----------------
 df_imp <<- imputed
 train_imp <- df_imp %>% filter(!is.na(status_group))
@@ -64,10 +61,10 @@ graph_ranger <- po_latlon_na %>>%
   po("removeconstants") %>>%
   lrn("classif.ranger",
       predict_type = "response",
-      num.trees = 437,
+      num.trees = 1142,
       mtry = 4,
-      max.depth = 28,
-      min.node.size = 5,
+      max.depth = 60,
+      min.node.size = 4,
       importance = "impurity")
 
 
@@ -112,6 +109,8 @@ rr_imp$aggregate(msr("classif.bacc"))
 # keep month, delete season 0.8145153, 0.8230 -> keep season
 # 0.8129139, 
 
+## new pipeline / latitude geändert -> 0.8221 mit 437...;with 629 0.8142455,score 0.8228; 0.8224 with 895...; 0.8232 with 995
+
 #library(mlr3filters) 
 #flt = flt("importance", learner = lrn("classif.ranger", importance = "impurity"))
 #flt$calculate(task_imp)
@@ -137,9 +136,10 @@ result_imp_ranger_imputed <- data.frame(
 )
 
 saveRDS(result_imp_ranger_imputed, "data/predictions_ranger_imp_sub.rds")
-write.csv(result_imp_ranger_imputed, "sub43.csv", row.names = FALSE)
+write.csv(result_imp_ranger_imputed, "sub50.csv", row.names = FALSE)
 
 
+# ignore
 # ----------- 2. with rpart, No imputation-----------
 df_fi <- fi_clean %>%
   select(-region, -district_code, -subvillage, -ward, 
