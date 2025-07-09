@@ -8,9 +8,10 @@ library(mlr3tuning)
 library(paradox)
 library(future)
 library(parallel)
+library(mlr3mbo)
 workers <- as.numeric(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1"))
 print(workers)
-plan(multisession, workers = 16)
+plan(multisession, workers = 32)
 set.seed(7832)
 fi_clean <- readRDS("data/data_imputed.rds")
 
@@ -43,36 +44,40 @@ task_ll <- TaskClassif$new(
   target  = "status_group"
 )
 
-graph <- po("colapply",  # char -> factor
-            param_vals = list(
-              applicator     = function(x) if (is.character(x)) as.factor(x) else x,
-              affect_columns = selector_type("character")
-            )) %>>%
+task_ll$col_roles$stratum <- task_ll$target_names
+
+graph <- po("colapply", param_vals = list(
+  applicator     = function(x) if (is.character(x)) as.factor(x) else x,
+  affect_columns = selector_type("character")
+)) %>>%
   po("removeconstants") %>>%
   po("encode", method = "treatment") %>>%
   lrn("classif.xgboost",
       predict_type = "prob",
-      nthread      = 8)
+      nthread = 8,
+      eval_metric = "mlogloss",
+      early_stopping_rounds = 20,
+      nrounds = to_tune(upper = 1000, internal = TRUE),
+      eta = to_tune(0.03, 0.06, logscale = TRUE),
+      max_depth = to_tune(4,8),
+      colsample_bytree = to_tune(0.7, 0.9),
+      subsample = to_tune(0.7, 0.9),
+      lambda = to_tune(1, 5, logscale = TRUE),
+      alpha  = to_tune(0.01, 2, logscale = TRUE),
+      gamma = to_tune(0, 5),
+      min_child_weight = to_tune(1, 10)
+  )
 
 base_lrn <- GraphLearner$new(graph)
 
-search_space <- paradox::ps(
-  "classif.xgboost.nrounds"        = p_int(800, 1200),
-  "classif.xgboost.eta"            = p_dbl(0.03, 0.06, logscale = TRUE),
-  "classif.xgboost.max_depth"      = p_int(4, 8),
-  "classif.xgboost.subsample"      = p_dbl(0.7, 0.9),
-  "classif.xgboost.colsample_bytree" = p_dbl(0.7, 0.9),
-  "classif.xgboost.lambda"         = p_dbl(1, 5, logscale = TRUE),
-  "classif.xgboost.alpha"          = p_dbl(0, 2, logscale = TRUE)
-)
+set_validate(base_lrn, validate = "test", ids = "classif.xgboost")
 
 auto <- AutoTuner$new(
-  learner      = base_lrn,
-  resampling   = rsmp("cv", folds = 5),
-  measure      = msr("classif.acc"),
-  search_space = search_space,
-  tuner        = tnr("random_search"),
-  terminator   = trm("evals", n_evals = 100)
+  learner = base_lrn,
+  resampling = rsmp("cv", folds = 5),
+  measure = msr("classif.acc"),
+  tuner = tnr("mbo"),
+  terminator = trm("evals", n_evals = 100)
 )
 
 auto$train(task_ll)
@@ -89,3 +94,6 @@ result_list <- list(
 )
 
 saveRDS(result_list, file = "result/xgb_tuning_results.rds")
+saveRDS(auto$learner, file = "result/xgb_tuning_model.rds")
+saveRDS(auto$archive, file = "result/xgb_tuning_archive.rds")
+
