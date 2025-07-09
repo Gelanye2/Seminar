@@ -385,7 +385,6 @@ data_all_clean <- data_all_clean %>%
     )
   )
 
-<<<<<<< HEAD
 # region_district: test
 fi_boost %>%
   group_by(region_district) %>%
