@@ -68,7 +68,7 @@ graph_ranger <- po_latlon_na %>>%
       importance = "impurity")
 
 
-# Wrap as GraphLearner
+# Wrap as GraphLearner,
 glrn_imp <- GraphLearner$new(graph_ranger)
 
 # 5-fold CV
