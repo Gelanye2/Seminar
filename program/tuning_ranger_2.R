@@ -42,11 +42,13 @@ graph <-
 glrn <- GraphLearner$new(graph)
 
 param_set <- ps(
-  classif.ranger.num.trees     = p_int(300, 600),
-  classif.ranger.mtry          = p_int(10, 30),
-  classif.ranger.max.depth     = p_int(15, 40),
-  classif.ranger.min.node.size = p_int(3, 15)
+  classif.ranger.num.trees     = p_int(300, 1000),
+  classif.ranger.mtry          = p_int(3, floor(sqrt(ncol(train_imp)))),
+  classif.ranger.max.depth     = p_int(10, 40),
+  classif.ranger.min.node.size = p_int(1, 15),
+  classif.ranger.sample.fraction = p_dbl(0.6, 1)
 )
+
 
 # ---- AutoTuner ----
 at_ranger <- AutoTuner$new(

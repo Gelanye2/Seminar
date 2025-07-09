@@ -32,7 +32,6 @@ graph <-
     applicator = function(x) if (is.character(x)) as.factor(x) else x,
     affect_columns = selector_type("character")
   )) %>>%
-  po("encode", method = "treatment") %>>%
   po("removeconstants") %>>%
   lrn("classif.ranger",
       predict_type = "response"
@@ -41,11 +40,13 @@ graph <-
 # GraphLearner
 glrn <- GraphLearner$new(graph)
 
+
 param_set <- ps(
-  classif.ranger.num.trees     = p_int(300, 600),
-  classif.ranger.mtry          = p_int(10, 30),
-  classif.ranger.max.depth     = p_int(15, 40),
-  classif.ranger.min.node.size = p_int(3, 15)
+  classif.ranger.num.trees     = p_int(400, 700),
+  classif.ranger.mtry          = p_int(5, 15),
+  classif.ranger.max.depth     = p_int(20, 60),
+  classif.ranger.min.node.size = p_int(1, 5),
+  classif.ranger.sample.fraction = p_dbl(0.7, 1.0)
 )
 
 # ---- AutoTuner ----

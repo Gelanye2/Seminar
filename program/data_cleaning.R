@@ -144,6 +144,18 @@ data_all_clean <- data_all_clean %>% select(-id, -quantity_group,
                                            -waterpoint_type_group, -year_recorded,
                                            -month_recorded, -construction_year)
 
+#data_all_clean <- data_all_clean %>% select(-id, -quantity_group, 
+ #                                           -recorded_by, -amount_tsh,
+  #                                          -wpt_name, num_private,
+   #                                         -subvillage, -ward, -region, 
+    #                                        -district_code, -subvillage, -ward, 
+     #                                       -region_code, -extraction_type_class,
+      #                                      -extraction_type, 
+       #                                     -scheme_management,
+        #                                    -quality_group, 
+         #                                   -waterpoint_type_group)
+
+
 # keep only gps height > 0
 data_all_clean <- data_all_clean %>%
   mutate(gps_height = ifelse(gps_height <= 0, NA, gps_height))

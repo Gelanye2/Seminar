@@ -29,8 +29,7 @@ fi_clean <- readRDS("data/fi_clean.rds")
 #
 # subsample 0.1 1
 df_ll <- fi_clean %>%
-  select(-region, -district_code, -subvillage, -ward,
-         -lga, -region_code, -longitude, -latitude) %>%
+  select( -longitude, -latitude) %>%
   select_if(~ length(unique(.[!is.na(.)])) > 1)
 
 train_ll <- df_ll %>% filter(!is.na(status_group))
@@ -52,32 +51,32 @@ graph <- po("colapply",  # char -> factor
   po("encode", method = "treatment") %>>%
   lrn("classif.xgboost",
       predict_type          = "response",
-      nrounds = 500)
+      nrounds = 50)
 
 base_lrn <- GraphLearner$new(graph)
 
 ps <- ps(
   "classif.xgboost.eta"             = p_dbl(0.1, 0.2, logscale = TRUE),
-  "classif.xgboost.nrounds"         = p_int(100, 500),
-  "classif.xgboost.max_depth"       = p_int(6, 12),
-  "classif.xgboost.subsample"       = p_dbl(0.9, 1),
-  "classif.xgboost.colsample_bytree"= p_dbl(0.9, 1),
-  "classif.xgboost.lambda"          = p_dbl(0.1, 5, logscale = TRUE),
-  "classif.xgboost.alpha"           = p_dbl(0.1, 5, logscale = TRUE)
+  "classif.xgboost.nrounds"         = p_int(10, 50),
+  "classif.xgboost.max_depth"       = p_int(3, 6),
+  "classif.xgboost.subsample"       = p_dbl(0.8, 1),
+  "classif.xgboost.colsample_bytree"= p_dbl(0.8, 1),
+  "classif.xgboost.lambda"          = p_dbl(0.1, 1, logscale = TRUE),
+  "classif.xgboost.alpha"           = p_dbl(0.1, 1, logscale = TRUE)
 )
 
 auto <- AutoTuner$new(
   learner      = base_lrn,
-  resampling   = rsmp("cv", folds = 3),
+  resampling   = rsmp("cv", folds = 2),
   measure      = msr("classif.acc"),
   search_space = ps,
   tuner        = tnr("random_search"),
-  terminator   = trm("evals", n_evals = 30)
+  terminator   = trm("evals", n_evals = 5)
 )
 
-rr <- mlr3::resample(task_ll, auto, rsmp("cv", folds = 3))
-acc  <- rr$aggregate(msr("classif.acc"))
-bacc <- rr$aggregate(msr("classif.bacc"))
+rr <- mlr3::resample(task_ll, auto, rsmp("cv", folds = 2))
+rr$aggregate(msr("classif.acc"))
+rr$aggregate(msr("classif.bacc"))
 
 best_vals <- auto$learner$model$param_set$values
 print(best_vals)

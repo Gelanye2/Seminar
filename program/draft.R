@@ -385,12 +385,31 @@ data_all_clean <- data_all_clean %>%
     )
   )
 
-# region_district: test
-fi_boost %>%
-  group_by(region_district) %>%
-  summarise(
-    n_total     = n(),
-    n_missing   = sum(is.na(status_group)),
-    pct_missing = mean(is.na(status_group))
-  ) %>%
-  arrange(n_total)
+#######
+#check if test_full_imp identical to test_data_clean
+### check if test_full_imp identical to test_data_clean
+identical(
+  test_all %>%
+    select(extraction_type, management, region, basin,population) %>%
+    mutate(across(everything(), as.character)),
+  
+  test_all_clean %>%
+    select(extraction_type, management, region, basin,population) %>%
+    mutate(across(everything(), as.character))
+)
+
+library(waldo)
+
+compare(
+  test_all %>%
+    select(extraction_type, management, region, basin, population) %>%
+    mutate(across(everything(), as.character)),
+  
+  test_all_clean %>%
+    select(extraction_type, management, region, basin, population) %>%
+    mutate(across(everything(), as.character)),
+  max_diffs = Inf  # zeigt ALLES
+)
+
+
+
