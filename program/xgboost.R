@@ -11,8 +11,6 @@ library(mlr3)
 # Anzahl Worker festlegen (z. B. 4 Kerne)
 plan(multisession, workers = 16)  
 
-handlers("txtprogressbar")
-
 # keep region_district
 # ---- No imputation----
 df_fi <- fi_clean %>%
@@ -42,18 +40,23 @@ graph <-
      )
   ) %>>%
   po("encode", method = "treatment") %>>%
-  lrn("classif.xgboost",
-      predict_type            = "response",
-      nrounds                 = 300L,
-      eta                     = 0.05,
-      max_depth               = 6,
-      subsample               = 0.8,
-      colsample_bytree        = 0.8,
-      nthread          = 4,
-      verbose          = 1,
-      print_every_n    = 50
-    )
-
+  lrn("classif.lightgbm",
+      predict_type         = "response",
+      device_type          = "cpu",      # <–– hier CPU erzwingen
+      force_row_wise       = TRUE,       # <–– jetzt geht das
+      num_threads          = 4,          # korrektes Param-Naming
+      num_iterations       = 300L,       # statt nrounds
+      learning_rate        = 0.05,       # statt eta
+      max_depth            = 6,
+      num_leaves           = 63,         # passend zu 2^max_depth -1
+      feature_fraction     = 0.8,
+      bagging_fraction     = 0.8,
+      bagging_freq         = 1,
+      min_gain_to_split    = 0,
+      min_data_in_leaf     = 20,
+      verbose              = 1
+     
+  )
 
 # Wrap as GraphLearner
 glrn_fi <- GraphLearner$new(graph)

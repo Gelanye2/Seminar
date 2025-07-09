@@ -32,6 +32,15 @@ train_ll <- data_imputed %>% filter(!is.na(status_group))
 # alpha  Logscale 0.001 1000
 #
 # subsample 0.1 1
+<<<<<<< HEAD
+df_ll <- fi_clean %>%
+  select( -longitude, -latitude) %>%
+  select_if(~ length(unique(.[!is.na(.)])) > 1)
+
+train_ll <- df_ll %>% filter(!is.na(status_group))
+test_ll  <- df_ll %>% filter( is.na(status_group))
+=======
+>>>>>>> 66103ee90978f9214871be7213e589da189201f0
 
 # mlr3 task on the training set
 task_ll <- TaskClassif$new(
@@ -80,6 +89,38 @@ graph <- po_latlon_na %>>%
   po("removeconstants") %>>%
   po("encode", method = "treatment") %>>%
   lrn("classif.xgboost",
+
+      predict_type          = "response",
+      nrounds = 50)
+
+base_lrn <- GraphLearner$new(graph)
+
+ps <- ps(
+  "classif.xgboost.eta"             = p_dbl(0.1, 0.2, logscale = TRUE),
+  "classif.xgboost.nrounds"         = p_int(10, 50),
+  "classif.xgboost.max_depth"       = p_int(3, 6),
+  "classif.xgboost.subsample"       = p_dbl(0.8, 1),
+  "classif.xgboost.colsample_bytree"= p_dbl(0.8, 1),
+  "classif.xgboost.lambda"          = p_dbl(0.1, 1, logscale = TRUE),
+  "classif.xgboost.alpha"           = p_dbl(0.1, 1, logscale = TRUE)
+)
+
+auto <- AutoTuner$new(
+  learner      = base_lrn,
+  resampling   = rsmp("cv", folds = 2),
+  measure      = msr("classif.acc"),
+  search_space = ps,
+  tuner        = tnr("random_search"),
+  terminator   = trm("evals", n_evals = 5)
+)
+
+rr <- mlr3::resample(task_ll, auto, rsmp("cv", folds = 2))
+rr$aggregate(msr("classif.acc"))
+rr$aggregate(msr("classif.bacc"))
+
+best_vals <- auto$learner$model$param_set$values
+print(best_vals)
+=======
       predict_type = "prob",
       nthread = 8,
       eval_metric = "mlogloss",
@@ -113,6 +154,7 @@ rr <- mlr3::resample(task_ll, auto, rsmp("cv", folds = 3))
 acc  <- rr$aggregate(msr("classif.acc"))
 bacc <- rr$aggregate(msr("classif.bacc"))
 best_params <- auto$learner$param_set$values
+
 
 result_list <- list(
   acc                = acc,

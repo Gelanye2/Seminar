@@ -385,6 +385,7 @@ data_all_clean <- data_all_clean %>%
     )
   )
 
+<<<<<<< HEAD
 # region_district: test
 fi_boost %>%
   group_by(region_district) %>%
@@ -606,4 +607,30 @@ saveRDS(result_stacking, "data/predictions_stacking.rds")
 write.csv(result_stacking, "data/submission_stacking.csv", row.names = FALSE)
 
 print("Submission file 'submission_stacking.csv' has been generated.")
+
+#######
+#check if test_full_imp identical to test_data_clean
+### check if test_full_imp identical to test_data_clean
+identical(
+  test_all %>%
+    select(extraction_type, management, region, basin,population) %>%
+    mutate(across(everything(), as.character)),
+  
+  test_all_clean %>%
+    select(extraction_type, management, region, basin,population) %>%
+    mutate(across(everything(), as.character))
+)
+
+library(waldo)
+
+compare(
+  test_all %>%
+    select(extraction_type, management, region, basin, population) %>%
+    mutate(across(everything(), as.character)),
+  
+  test_all_clean %>%
+    select(extraction_type, management, region, basin, population) %>%
+    mutate(across(everything(), as.character)),
+  max_diffs = Inf  # zeigt ALLES
+)
 
