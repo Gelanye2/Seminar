@@ -4,7 +4,7 @@
 #SBATCH --error=../result/xgb_tuning_%j.err
 #SBATCH --time=06:00:00
 #SBATCH --cpus-per-task=128
-#SBATCH --mem=64G
+#SBATCH --mem=256G
 #SBATCH --partition=cm4_inter
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=Ju.Haoran@campus.lmu.de
