@@ -8,9 +8,13 @@ library(mlr3tuning)
 library(paradox)
 library(future)
 library(parallel)
+library(mlr3mbo)
 workers <- as.numeric(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1"))
-plan(multicore, workers = workers)
-fi_clean <- readRDS("data/fi_clean.rds")
+print(workers)
+plan(multisession, workers = 32)
+set.seed(7832)
+data_imputed <- readRDS("data/data_imputed.rds")
+train_ll <- data_imputed %>% filter(!is.na(status_group))
 
 # ---- Hyperparameter tuning (region_district and lga)----
 # eta 1e-4, 1  Logscale
@@ -28,12 +32,15 @@ fi_clean <- readRDS("data/fi_clean.rds")
 # alpha  Logscale 0.001 1000
 #
 # subsample 0.1 1
+<<<<<<< HEAD
 df_ll <- fi_clean %>%
   select( -longitude, -latitude) %>%
   select_if(~ length(unique(.[!is.na(.)])) > 1)
 
 train_ll <- df_ll %>% filter(!is.na(status_group))
 test_ll  <- df_ll %>% filter( is.na(status_group))
+=======
+>>>>>>> 66103ee90978f9214871be7213e589da189201f0
 
 # mlr3 task on the training set
 task_ll <- TaskClassif$new(
@@ -42,14 +49,47 @@ task_ll <- TaskClassif$new(
   target  = "status_group"
 )
 
-graph <- po("colapply",  # char -> factor
-            param_vals = list(
-              applicator     = function(x) if (is.character(x)) as.factor(x) else x,
-              affect_columns = selector_type("character")
-            )) %>>%
+task_ll$col_roles$stratum <- task_ll$target_names
+
+latlon_to_na <- function(v, thr = 3e-8) {
+  v <- as.numeric(v)
+  v[ abs(v) < thr ] <- NA_real_
+  v
+}
+po_latlon_na <- po("colapply", id = "latlon_to_na",
+                   param_vals = list(
+                     applicator     = latlon_to_na,
+                     affect_columns = selector_name(c("longitude", "latitude"))
+                   ))
+
+po_latlon_flag <- po("mutate", id = "latlon_flag",
+                     param_vals = list(
+                       mutation = list(
+                         longitude_missing = ~ is.na(longitude),
+                         latitude_missing  = ~ is.na(latitude)
+                       )
+                     ))
+
+po_latlon_impute <- po("imputeconstant", id = "latlon_imputer",
+                       param_vals = list(
+                         affect_columns = selector_name(c("longitude", "latitude")),
+                         constant       = -999    
+                       ))
+
+po_char2fac <- po("colapply", id = "char2factor",
+                  param_vals = list(
+                    applicator     = as.factor,
+                    affect_columns = selector_type("character")
+                  ))
+
+graph <- po_latlon_na %>>%
+  po_latlon_flag %>>%
+  po_latlon_impute %>>%
+  po_char2fac %>>%
   po("removeconstants") %>>%
   po("encode", method = "treatment") %>>%
   lrn("classif.xgboost",
+
       predict_type          = "response",
       nrounds = 50)
 
@@ -80,12 +120,49 @@ rr$aggregate(msr("classif.bacc"))
 
 best_vals <- auto$learner$model$param_set$values
 print(best_vals)
+=======
+      predict_type = "prob",
+      nthread = 8,
+      eval_metric = "mlogloss",
+      early_stopping_rounds = 20,
+      nrounds = to_tune(upper = 1000, internal = TRUE),
+      eta = to_tune(0.03, 0.06, logscale = TRUE),
+      max_depth = to_tune(4,8),
+      colsample_bytree = to_tune(0.7, 0.9),
+      subsample = to_tune(0.7, 0.9),
+      lambda = to_tune(1, 5, logscale = TRUE),
+      alpha  = to_tune(0.01, 2, logscale = TRUE),
+      gamma = to_tune(0, 5),
+      min_child_weight = to_tune(1, 10)
+  )
 
-result_list <- list(
-  accuracy          = acc,
-  balanced_accuracy = bacc,
-  best_params       = best_vals
+base_lrn <- GraphLearner$new(graph)
+
+set_validate(base_lrn, validate = "test", ids = "classif.xgboost")
+
+auto <- AutoTuner$new(
+  learner = base_lrn,
+  resampling = rsmp("cv", folds = 5),
+  measure = msr("classif.acc"),
+  tuner = tnr("mbo"),
+  terminator = trm("evals", n_evals = 100)
 )
 
-saveRDS(result_list, file = "../result/xgb_tuning_results.rds")
+auto$train(task_ll)
+
+rr <- mlr3::resample(task_ll, auto, rsmp("cv", folds = 3))
+acc  <- rr$aggregate(msr("classif.acc"))
+bacc <- rr$aggregate(msr("classif.bacc"))
+best_params <- auto$learner$param_set$values
+
+
+result_list <- list(
+  acc                = acc,
+  bacc               = bacc,
+  best_params        = best_params
+)
+
+saveRDS(result_list, file = "result/xgb_tuning_results.rds")
+saveRDS(auto$learner, file = "result/xgb_tuning_model.rds")
+saveRDS(auto$archive, file = "result/xgb_tuning_archive.rds")
 

@@ -3,7 +3,7 @@
 #SBATCH --output=../result/xgb_tuning_%j.out
 #SBATCH --error=../result/xgb_tuning_%j.err
 #SBATCH --time=06:00:00
-#SBATCH --cpus-per-task=128
+#SBATCH --cpus-per-task=64
 #SBATCH --mem=256G
 #SBATCH --partition=cm4_inter
 #SBATCH --mail-type=END,FAIL
@@ -13,4 +13,4 @@ module load r/4.3.3-gcc13-mkl
 export R_FUTURE_FORK_ENABLE=TRUE
 
 cd ~/seminar
-Rscript program/xgboost_hp.R
+Rscript program/stack.R
