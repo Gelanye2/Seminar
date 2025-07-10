@@ -48,7 +48,7 @@ yiu_median         <- median(train$years_in_use, na.rm = TRUE)
 latitude_median <- median(train$latitude, na.rm = TRUE)
 longitude_median <- median(train$longitude, na.rm = TRUE)
 
-sch_mode  <- get_mode(train$scheme_name)
+sch_mode  <- get_mode(train$scheme_management)
 pub_mode  <- get_mode(train$public_meeting)
 perm_mode <- get_mode(train$permit)
 inst_mode <- get_mode(train$installer)
@@ -66,7 +66,7 @@ impute_fun <- function(df) {
     permit            = factor(replace_na(permit, perm_mode)),
     installer         = replace_na(installer, inst_mode),
     funder            = replace_na(funder, fund_mode),
-    scheme_name = factor(replace_na(as.character(scheme_name), sch_mode)),
+    scheme_management = factor(replace_na(as.character(scheme_management), sch_mode)),
     across(where(is.character), as.factor)
   )
 }
@@ -94,18 +94,6 @@ align_factors <- function(train, test) {
 test_full_imp <- align_factors(train_imp, test_full_imp)
 sub_imputed <- bind_rows(train_imp, test_imp) # for submodel
 
-# 7. Impute scheme_name danach separat (nach Level-Angleichung)
-impute_scheme_name <- function(df) {
-  df$scheme_name <- as.character(df$scheme_name)
-  df$scheme_name[is.na(df$scheme_name)] <- as.character(sch_mode)
-  df$scheme_name <- factor(df$scheme_name, levels = levels(train_imp$scheme_name))
-  return(df)
-}
-
-train_imp       <- impute_scheme_name(train_imp)
-test_imp        <- impute_scheme_name(test_imp)
-test_full_imp   <- impute_scheme_name(test_full_imp)
-
 # 8. Kombinierte Daten erzeugen
 sub_imputed   <- bind_rows(train_imp, test_imp)        # für Teildatenmodell
 data_imputed  <- bind_rows(train_imp, test_full_imp)   # vollständiger Testsatz
@@ -124,7 +112,6 @@ test_data_clean <- data_clean %>% filter(dataset == "test")
 drop_cols <- c("dataset")
 
 ------------- # 1. Latitude/Longitude NICHT korrigieren (0/-2e-08 behalten) ---------
-
 # 2. Spalten entfernen
 drop_cols <- c("dataset")  # latitude und longitude bleiben erhalten
 train      <- train_data_clean %>% select(-all_of(drop_cols))
@@ -172,7 +159,7 @@ impute_fun <- function(df) {
   df %>% mutate(
     gps_height        = replace_na(gps_height,        gph_median),
     years_in_use      = replace_na(years_in_use,      yiu_median),
-   
+    
     public_meeting    = factor(replace_na(public_meeting, pub_mode)),
     permit            = factor(replace_na(permit, perm_mode)),
     installer         = replace_na(installer, inst_mode),
