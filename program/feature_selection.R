@@ -129,7 +129,7 @@ colnames(train3)
 
 # "scheme_management", "scheme_name"
 unique(data_all_clean[, c("scheme_management", "scheme_name")])
-train3 <- train3 %>% select(-scheme_management)
+train3 <- train3 %>% select(-scheme_name)
 # train3 <- best_feature(data = train3, base_col = "scheme_name", group_col = "scheme_management", folds = 5)
 colnames(train3)
 
