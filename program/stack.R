@@ -16,6 +16,7 @@ fi_clean <- readRDS("data/fi_clean.rds") # no imp and all
 #sub_imputed <- readRDS("data/sub_imputed.rds") # train + test without longtitude and latitude
 #test_full_imp <- readRDS("data/test_full_imp.rds")
 test_all <- readRDS("data/test_all.rds")
+xgb_params <- readRDS("result/xgb_tuning_params.rds")
 
 # 1. TASK DEFINITION
 # Use the imputed dataset for consistency
@@ -95,7 +96,17 @@ pipeline_for_ranger <- po_latlon_na %>>%
 lrn_xgb_graph <- as_learner(
   pipeline_for_xgb %>>%
     lrn("classif.xgboost", predict_type = "prob",
-        nrounds = 500L, eta = 0.05, max_depth = 6, nthread = 8))
+        nrounds = xgb_params$classif.xgboost.nrounds, 
+        eta = xgb_params$classif.xgboost.eta, 
+        max_depth = xgb_params$classif.xgboost.max_depth, 
+        colsample_bytree = xgb_params$classif.xgboost.colsample_bytree,
+        eval_metric = xgb_params$classif.xgboost.eval_metric,
+        gamma = xgb_params$classif.xgboost.gamma,
+        alpha = xgb_params$classif.xgboost.alpha,
+        lambda = xgb_params$classif.xgboost.lambda,
+        min_child_weight = xgb_params$classif.xgboost.min_child_weight,
+        subsample = xgb_params$classif.xgboost.subsample,
+        nthread = 8))
 lrn_xgb_graph$id <- "xgboost.with_na"
 
 # Graph Learner 2: Ranger with its FULL imputation pipeline.
