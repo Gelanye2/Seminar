@@ -2,7 +2,7 @@
 #SBATCH --job-name=xgb_hp
 #SBATCH --output=../result/xgb_tuning_%j.out
 #SBATCH --error=../result/xgb_tuning_%j.err
-#SBATCH --time=06:00:00
+#SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=128
 #SBATCH --mem=256G
 #SBATCH --partition=cm4_inter
