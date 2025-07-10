@@ -11,10 +11,9 @@ library(parallel)
 library(mlr3mbo)
 workers <- as.numeric(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1"))
 print(workers)
-plan(multisession, workers = 32)
+plan(multisession, workers = 16)
 set.seed(7832)
-data_imputed <- readRDS("data/data_imputed.rds")
-train_ll <- data_imputed %>% filter(!is.na(status_group))
+df <- readRDS("data/data_imputed.rds")
 
 # ---- Hyperparameter tuning (region_district and lga)----
 # eta 1e-4, 1  Logscale
@@ -32,15 +31,11 @@ train_ll <- data_imputed %>% filter(!is.na(status_group))
 # alpha  Logscale 0.001 1000
 #
 # subsample 0.1 1
-<<<<<<< HEAD
-df_ll <- fi_clean %>%
-  select( -longitude, -latitude) %>%
+df_ll <- df %>%
   select_if(~ length(unique(.[!is.na(.)])) > 1)
 
 train_ll <- df_ll %>% filter(!is.na(status_group))
 test_ll  <- df_ll %>% filter( is.na(status_group))
-=======
->>>>>>> 66103ee90978f9214871be7213e589da189201f0
 
 # mlr3 task on the training set
 task_ll <- TaskClassif$new(
@@ -73,7 +68,7 @@ po_latlon_flag <- po("mutate", id = "latlon_flag",
 po_latlon_impute <- po("imputeconstant", id = "latlon_imputer",
                        param_vals = list(
                          affect_columns = selector_name(c("longitude", "latitude")),
-                         constant       = -999    
+                         constant       = -999
                        ))
 
 po_char2fac <- po("colapply", id = "char2factor",
@@ -89,45 +84,13 @@ graph <- po_latlon_na %>>%
   po("removeconstants") %>>%
   po("encode", method = "treatment") %>>%
   lrn("classif.xgboost",
-
-      predict_type          = "response",
-      nrounds = 50)
-
-base_lrn <- GraphLearner$new(graph)
-
-ps <- ps(
-  "classif.xgboost.eta"             = p_dbl(0.1, 0.2, logscale = TRUE),
-  "classif.xgboost.nrounds"         = p_int(10, 50),
-  "classif.xgboost.max_depth"       = p_int(3, 6),
-  "classif.xgboost.subsample"       = p_dbl(0.8, 1),
-  "classif.xgboost.colsample_bytree"= p_dbl(0.8, 1),
-  "classif.xgboost.lambda"          = p_dbl(0.1, 1, logscale = TRUE),
-  "classif.xgboost.alpha"           = p_dbl(0.1, 1, logscale = TRUE)
-)
-
-auto <- AutoTuner$new(
-  learner      = base_lrn,
-  resampling   = rsmp("cv", folds = 2),
-  measure      = msr("classif.acc"),
-  search_space = ps,
-  tuner        = tnr("random_search"),
-  terminator   = trm("evals", n_evals = 5)
-)
-
-rr <- mlr3::resample(task_ll, auto, rsmp("cv", folds = 2))
-rr$aggregate(msr("classif.acc"))
-rr$aggregate(msr("classif.bacc"))
-
-best_vals <- auto$learner$model$param_set$values
-print(best_vals)
-=======
       predict_type = "prob",
       nthread = 8,
       eval_metric = "mlogloss",
-      early_stopping_rounds = 20,
-      nrounds = to_tune(upper = 1000, internal = TRUE),
-      eta = to_tune(0.03, 0.06, logscale = TRUE),
-      max_depth = to_tune(4,8),
+      early_stopping_rounds = 10,
+      nrounds = to_tune(upper = 100, internal = TRUE),
+      eta = to_tune(0.1,0.2, logscale = TRUE),
+      max_depth = to_tune(5,15),
       colsample_bytree = to_tune(0.7, 0.9),
       subsample = to_tune(0.7, 0.9),
       lambda = to_tune(1, 5, logscale = TRUE),
@@ -142,27 +105,18 @@ set_validate(base_lrn, validate = "test", ids = "classif.xgboost")
 
 auto <- AutoTuner$new(
   learner = base_lrn,
-  resampling = rsmp("cv", folds = 5),
+  resampling = rsmp("cv", folds = 3),
   measure = msr("classif.acc"),
   tuner = tnr("mbo"),
-  terminator = trm("evals", n_evals = 100)
+  terminator = trm("evals", n_evals = 50)
 )
 
 auto$train(task_ll)
 
-rr <- mlr3::resample(task_ll, auto, rsmp("cv", folds = 3))
-acc  <- rr$aggregate(msr("classif.acc"))
-bacc <- rr$aggregate(msr("classif.bacc"))
 best_params <- auto$learner$param_set$values
 
-
-result_list <- list(
-  acc                = acc,
-  bacc               = bacc,
-  best_params        = best_params
-)
-
-saveRDS(result_list, file = "result/xgb_tuning_results.rds")
+saveRDS(best_params, file = "result/xgb_tuning_params.rds")
 saveRDS(auto$learner, file = "result/xgb_tuning_model.rds")
 saveRDS(auto$archive, file = "result/xgb_tuning_archive.rds")
+
 
