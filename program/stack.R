@@ -134,7 +134,7 @@ stacked_learners <- lapply(super_learners, function(sl) {
         super_learner = sl,
         method = "cv",
         folds = 5,
-        use_features = TRUE 
+        use_features = FALSE 
     ),
     id = paste0("stack_", sl$id)
   )
