@@ -101,8 +101,13 @@ lrn_xgb_graph$id <- "xgboost.with_na"
 # Graph Learner 2: Ranger with its FULL imputation pipeline.
 lrn_ranger_graph <- as_learner(
   pipeline_for_ranger %>>%
-    lrn("classif.ranger", predict_type = "prob",
-        num.trees = 500, min.node.size = 1, num.threads = 8))
+    lrn("classif.ranger", predict_type = "prob", 
+        num.trees = 1142,
+        mtry = 4,
+        max.depth = 60,
+        min.node.size = 4,
+        importance = "impurity",
+        num.threads = 8))
 lrn_ranger_graph$id <- "ranger.imputed"
 
 # 4. STACKING ENSEMBLE DEFINITION
