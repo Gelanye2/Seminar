@@ -23,9 +23,10 @@ clean_func <- function(x) {
 
 data_clean$funder <- clean_func(data_clean$funder)
 data_clean$installer <- clean_func(data_clean$installer)
+data_clean$scheme_name <- clean_func(data_clean$scheme_name)
 
 # --- Evaluation ----
-evaluate_string_clustering <- function(string_vec, thresholds = seq(0.05, 1.0, by = 0.01)) {
+evaluate_string_clustering <- function(string_vec, thresholds = seq(0.05, 0.5, by = 0.01)) {
   # Remove NAs and empty strings
   string_vec <- string_vec[!is.na(string_vec) & string_vec != ""]
 
@@ -77,6 +78,9 @@ data_funder <- evaluate_string_clustering(data_clean$funder)
 data_installer <- evaluate_string_clustering(data_clean$installer)
 best_thres_f   <- data_funder$threshold[which.max(data_funder$silhouette)]
 best_thres_i   <- data_installer$threshold[which.max(data_installer$silhouette)]
+
+data_scheme <- evaluate_string_clustering(data_clean$scheme_name)
+best_thres_s   <- data_scheme$threshold[which.max(data_scheme$silhouette)]
 
 plot_string_clustering <- function(result_df) {
   # Compute best‐Silhouette threshold
@@ -136,6 +140,7 @@ plot_string_clustering <- function(result_df) {
 
 plot_string_clustering(data_funder)
 plot_string_clustering(data_installer)
+plot_string_clustering(data_scheme)
 
 # --- group ----
 group_similar_categories <- function(data, column, sim_threshold = 0.2, new_col = NULL) {
@@ -205,6 +210,15 @@ data_clean <- group_similar_categories(
 n_distinct(data_clean$installer_grouped)
 data_clean$installer <- data_clean$installer_grouped
 data_clean$installer_grouped <- NULL
+
+data_clean <- group_similar_categories(
+  data = data_clean,
+  column = "scheme_name",
+  sim_threshold = best_thres_s
+)
+n_distinct(data_clean$scheme_name_grouped)
+data_clean$scheme_name <- data_clean$scheme_name_grouped
+data_clean$scheme_name_grouped <- NULL
 
 # --- Assign categories based on keyword patterns ----
 keyword_map <- list(
@@ -303,7 +317,6 @@ group_rare <- function(x, target_prop = 0.1, other_label = "other") {
 }
 
 data_clean$funder <- group_rare(data_clean$funder)
-
 data_clean$installer <- group_rare(data_clean$installer)
 
 n_distinct(data_clean$funder)

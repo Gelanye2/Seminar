@@ -16,7 +16,7 @@ fi_clean <- readRDS("data/fi_clean.rds") # no imp and all
 #sub_imputed <- readRDS("data/sub_imputed.rds") # train + test without longtitude and latitude
 #test_full_imp <- readRDS("data/test_full_imp.rds")
 test_all <- readRDS("data/test_all.rds")
-xgb_params <- readRDS("result/xgb_tuning_params.rds")
+xgb_params <- readRDS("result/xgb_tuning_params2.rds")
 
 # 1. TASK DEFINITION
 # Use the imputed dataset for consistency
@@ -93,39 +93,78 @@ pipeline_for_ranger <- po_latlon_na %>>%
 
 # 3. GRAPH LEARNER DEFINITION
 # Graph Learner 1: XGBoost with its minimal preprocessing pipeline.
+# lrn_xgb_graph <- as_learner(
+#   pipeline_for_xgb %>>%
+#     lrn("classif.xgboost", predict_type = "prob",
+#         nrounds = xgb_params$classif.xgboost.nrounds, 
+#         eta = xgb_params$classif.xgboost.eta, 
+#         max_depth = xgb_params$classif.xgboost.max_depth, 
+#         colsample_bytree = xgb_params$classif.xgboost.colsample_bytree,
+#         eval_metric = xgb_params$classif.xgboost.eval_metric,
+#         gamma = xgb_params$classif.xgboost.gamma,
+#         alpha = xgb_params$classif.xgboost.alpha,
+#         lambda = xgb_params$classif.xgboost.lambda,
+#         min_child_weight = xgb_params$classif.xgboost.min_child_weight,
+#         subsample = xgb_params$classif.xgboost.subsample,
+#         nthread = 8))
 lrn_xgb_graph <- as_learner(
   pipeline_for_xgb %>>%
-    lrn("classif.xgboost", predict_type = "prob",
-        nrounds = xgb_params$classif.xgboost.nrounds, 
-        eta = xgb_params$classif.xgboost.eta, 
-        max_depth = xgb_params$classif.xgboost.max_depth, 
-        colsample_bytree = xgb_params$classif.xgboost.colsample_bytree,
-        eval_metric = xgb_params$classif.xgboost.eval_metric,
-        gamma = xgb_params$classif.xgboost.gamma,
-        alpha = xgb_params$classif.xgboost.alpha,
-        lambda = xgb_params$classif.xgboost.lambda,
-        min_child_weight = xgb_params$classif.xgboost.min_child_weight,
-        subsample = xgb_params$classif.xgboost.subsample,
-        nthread = 8))
+    lrn("classif.xgboost",
+        predict_type = "prob",
+        nrounds = 1000L,
+        eta = 0.1,
+        max_depth = 6,
+        subsample = 0.8,
+        colsample_bytree = 0.8,
+        nthread = 8
+    )
+)
 lrn_xgb_graph$id <- "xgboost.with_na"
 
 # Graph Learner 2: Ranger with its FULL imputation pipeline.
 lrn_ranger_graph <- as_learner(
   pipeline_for_ranger %>>%
-    lrn("classif.ranger", predict_type = "prob", 
-        num.trees = 1142,
-        mtry = 4,
-        max.depth = 60,
-        min.node.size = 4,
-        importance = "impurity",
-        num.threads = 8))
+    lrn("classif.ranger",
+        predict_type = "prob",
+        num.trees = 500,
+        mtry = floor(sqrt(ncol(train_raw) - 1)), # ncol-1 for target
+        min.node.size = 1,
+        num.threads = 8
+    )
+)
+    # lrn("classif.ranger", predict_type = "prob", 
+    #     num.trees = 1142,
+    #     mtry = 4,
+    #     max.depth = 60,
+    #     min.node.size = 4,
+    #     importance = "impurity",
+    #     num.threads = 8))
 lrn_ranger_graph$id <- "ranger.imputed"
 
 # 4. STACKING ENSEMBLE DEFINITION
+search_space_super_ranger = ps(
+  num.trees     = p_int(50, 400),
+  min.node.size = p_int(1, 20),
+  # The input features for the super learner are the prediction probabilities from
+  # 2 base learners for 3 classes, so 2*3=6 features. mtry can be 1 to 6.
+  mtry          = p_int(1, 6)
+)
+
+at_super_ranger = AutoTuner$new(
+  learner = lrn("classif.ranger", id = "ranger", predict_type = "prob"),
+  resampling = rsmp("cv", folds = 3), # Inner CV for tuning
+  measure = msr("classif.bacc"),      # Tune for balanced accuracy
+  search_space = search_space_super_ranger,
+  terminator = trm("evals", n_evals = 30), # Try 30 different combinations
+  tuner = tnr("random_search")
+)
+
 specialized_base_learners <- list(lrn_xgb_graph, lrn_ranger_graph)
 super_learners <- list(
   lrn("classif.multinom", id = "multinom", predict_type = "prob"),
-  lrn("classif.ranger", id = "ranger", predict_type = "prob", num.trees = 100))
+  at_super_ranger
+  #lrn("classif.ranger", id = "ranger", predict_type = "prob", num.trees = 100)
+  )
 
 stacked_learners <- lapply(super_learners, function(sl) {
   as_learner(
@@ -147,8 +186,8 @@ design <- benchmark_grid(tasks = task_raw, learners = stacked_learners,
 bmr <- benchmark(design)
 print(bmr$aggregate(msrs(c("classif.acc", "classif.bacc"))))
 
-bmr_aggr <- bmr$aggregate(msrs(c("classif.acc")))
-best_learner_id <- bmr_aggr[order(-classif.acc)]$learner_id[1]
+bmr_aggr <- bmr$aggregate(msrs(c("classif.bacc")))
+best_learner_id <- bmr_aggr[order(-classif.bacc)]$learner_id[1]
 final_learner <- Filter(function(l) l$id == best_learner_id, stacked_learners)[[1]]
 
 # 6. FINAL MODEL TRAINING AND PREDICTION
@@ -160,7 +199,7 @@ result_stacking <- data.frame(
   id           = test_all$id,
   status_group = final_predictions$response,
   stringsAsFactors = FALSE)
-write.csv(result_stacking, "data/submission_stacking.csv", row.names = FALSE)
+write.csv(result_stacking, "result/submission_stacking.csv", row.names = FALSE)
 
 all_artifacts <- list(
   benchmark_result = bmr,
@@ -169,5 +208,5 @@ all_artifacts <- list(
   final_trained_learner = final_learner,
   final_predictions_object = final_predictions,
   submission_dataframe = result_stacking)
-saveRDS(all_artifacts, file = "data/all_artifacts.rds")
+saveRDS(all_artifacts, file = "result/all_artifacts.rds")
 
