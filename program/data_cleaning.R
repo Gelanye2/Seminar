@@ -138,10 +138,10 @@ data_all_clean <- data_all_clean %>% select(-id, -quantity_group,
                                            -district_code, -ward, -lga, 
                                            -region_code, -extraction_type_class,
                                            -extraction_type, -management,
-                                           -management_group, -scheme_name,
-                                           -payment, -quality_group, -source,
+                                           -management_group, -scheme_name,-scheme_management,
+                                           -payment, -quality_group, -source, -year_recorded,
                                            -source_type, -source_class,
-                                           -waterpoint_type_group, -year_recorded,
+                                           -waterpoint_type_group,
                                            -month_recorded, -construction_year)
 
 #data_all_clean <- data_all_clean %>% select(-id, -quantity_group, 
