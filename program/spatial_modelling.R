@@ -1,9 +1,14 @@
-.libPaths("/media/external/s25_5/Rlibs")
+.libPaths("/dss/dsshome1/01/ra59qow2/R/x86_64-pc-linux-gnu-library/4.3")
 library(mlr3)
 library(mlr3pipelines)
 library(mlr3learners)
 library(data.table)
 library(dplyr)
+library(future)
+library(parallel)
+workers <- as.numeric(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1"))
+print(workers)
+plan(multisession, workers = 16)
 data_spatial_ml <- readRDS("data/data_all_spatial_imputed.rds") %>%
   mutate(set = ifelse(is.na(status_group), "test", "train"))
 
@@ -19,7 +24,7 @@ task_final <- TaskClassif$new(
 )
 
 graph <- po("encode") %>>%
-  lrn("classif.xgboost", predict_type = "prob")
+  lrn("classif.xgboost", predict_type = "prob", nthread = 7)
 
 learner <- GraphLearner$new(graph)
 
@@ -39,4 +44,4 @@ test_idx <- which(data_spatial_ml$set == "test")
 
 data_spatial_ml$status_group[test_idx] <- predicted_labels
 
-saveRDS(data_spatial_ml, "/media/external/s25_5/data/data_spatial_ml.rds")
+saveRDS(data_spatial_ml, "data/data_spatial_ml.rds")

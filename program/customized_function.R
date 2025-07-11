@@ -72,9 +72,11 @@ clean_func <- function(x) {
 
 ##get mode
 get_mode <- function(x) {
-ux <- unique(x)
-ux[which.max(tabulate(match(x, ux)))]
+  x <- x[!is.na(x)]
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
 }
+
 
 ##imputation:median+mode
 imputation <- function(df, values) {
@@ -82,7 +84,7 @@ imputation <- function(df, values) {
     mutate(
       gps_height     = replace_na(gps_height, values$gps_height),
       years_in_use   = replace_na(years_in_use, values$years_in_use),
-      scheme_management = replace_na(scheme_management, values$scheme_management),
+      scheme_name = replace_na(scheme_name, values$scheme_name),
       public_meeting    = as.factor(replace_na(public_meeting, values$public_meeting)),
       permit            = as.factor(replace_na(permit, values$permit)),
       installer         = replace_na(installer, values$installer),

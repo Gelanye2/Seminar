@@ -9,6 +9,7 @@ library(paradox)
 library(future)
 library(parallel)
 library(mlr3mbo)
+library(future.apply)
 workers <- as.numeric(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1"))
 print(workers)
 plan(multisession, workers = 16)
@@ -85,18 +86,18 @@ graph <- po_latlon_na %>>%
   po("encode", method = "treatment") %>>%
   lrn("classif.xgboost",
       predict_type = "prob",
-      nthread = 8,
+      nthread = 7,
       eval_metric = "mlogloss",
       early_stopping_rounds = 10,
-      nrounds = to_tune(upper = 100, internal = TRUE),
-      eta = to_tune(0.1,0.2, logscale = TRUE),
-      max_depth = to_tune(5,15),
-      colsample_bytree = to_tune(0.7, 0.9),
-      subsample = to_tune(0.7, 0.9),
+      nrounds = to_tune(upper = 500, internal = TRUE),
+      eta = to_tune(0.11,0.17, logscale = TRUE),
+      max_depth = to_tune(6,16),
+      colsample_bytree = to_tune(0.7, 1),
+      subsample = to_tune(0.7, 1),
       lambda = to_tune(1, 5, logscale = TRUE),
-      alpha  = to_tune(0.01, 2, logscale = TRUE),
+      alpha  = to_tune(0.01, 0.5, logscale = TRUE),
       gamma = to_tune(0, 5),
-      min_child_weight = to_tune(1, 10)
+      min_child_weight = to_tune(1,5)
   )
 
 base_lrn <- GraphLearner$new(graph)
@@ -115,8 +116,7 @@ auto$train(task_ll)
 
 best_params <- auto$learner$param_set$values
 
-saveRDS(best_params, file = "result/xgb_tuning_params.rds")
-saveRDS(auto$learner, file = "result/xgb_tuning_model.rds")
-saveRDS(auto$archive, file = "result/xgb_tuning_archive.rds")
-
-
+saveRDS(best_params, file = "result/xgb_tuning_params2.rds")
+saveRDS(auto$learner, file = "result/xgb_tuning_model2.rds")
+saveRDS(auto$archive, file = "result/xgb_tuning_archive2.rds")
+ y <- readRDS("result/xgb_tuning_params2.rds")

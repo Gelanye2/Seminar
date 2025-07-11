@@ -1,30 +1,29 @@
-####contributed by: Haoran Ju
-###Do Moran's test to test autocorrelation of residuals
-train_all_clean <- readRDS("data/fi_clean.rds") %>%
-  filter(dataset == "train")
-train_model <- train_all_clean %>%
-  select(-lga, -ward, -subvillage,-district_code, -region,-dataset, -month_recorded
-         ,-region_district,-region_code) %>%
-  mutate(population = ifelse(population == 0, NA, population))
-
-train <- train_model %>%
-  filter(longitude != 0, latitude != 0)
-
-train$status_numeric <- as.numeric(factor(train$status_group))
-
-model <- ranger(status_numeric ~ ., data = train)
-train$residual <- model$predictions - train$status_numeric
-
-coords <- cbind(train$longitude, train$latitude)
-nb <- knn2nb(knearneigh(coords, k = 8))
-lw <- nb2listw(nb, style = "W")
-moran_test <- moran.test(train$residual, listw = lw) ####no need for spatial modeling
-print(moran_test) #no need for spatial modeling
-# Moran's I for XGBoost residuals
-# Moran's I for LM residuals
-
+# ####contributed by: Haoran Ju
+# ###Do Moran's test to test autocorrelation of residuals
+# train_all_clean <- readRDS("data/fi_clean.rds") %>%
+#   filter(dataset == "train")
+# train_model <- train_all_clean %>%
+#   select(-lga, -ward, -subvillage,-district_code, -region,-dataset, -month_recorded
+#          ,-region_district,-region_code) %>%
+#   mutate(population = ifelse(population == 0, NA, population))
+#
+# train <- train_model %>%
+#   filter(longitude != 0, latitude != 0)
+#
+# train$status_numeric <- as.numeric(factor(train$status_group))
+#
+# model <- ranger(status_numeric ~ ., data = train)
+# train$residual <- model$predictions - train$status_numeric
+#
+# coords <- cbind(train$longitude, train$latitude)
+# nb <- knn2nb(knearneigh(coords, k = 8))
+# lw <- nb2listw(nb, style = "W")
+# moran_test <- moran.test(train$residual, listw = lw) ####no need for spatial modeling
+# print(moran_test) #no need for spatial modeling
+# # Moran's I for XGBoost residuals
+# # Moran's I for LM residuals
 #population_buffer
-data_all_clean <- readRDS("data/fi_clean.rds")
+data_all_clean <- readRDS("data/fi_clean_year.rds")
 data_all_clean <- data_all_clean %>%
   mutate(population_1k = NA_integer_,
          population_500 = NA_integer_)
@@ -124,3 +123,28 @@ data_all_spatial<- data_all_spatial %>%
   filter(longitude != 0, latitude != 0)
 #save the final dataset
 saveRDS(data_all_spatial, "data/data_all_spatial.rds")
+
+###imputation
+data_all_spatial <- readRDS("data/data_all_spatial.rds") %>%
+  select(-dataset, -year_recorded, -population_500)
+
+#mean mode is slightly better than median mode
+train_data_sp <- data_all_spatial %>% filter(!is.na(status_group))
+test_data_sp  <- data_all_spatial %>% filter(is.na(status_group))
+
+impute_values <- list(
+  gps_height     = median(train_data_sp$gps_height, na.rm = TRUE),
+  years_in_use   = median(train_data_sp$years_in_use, na.rm = TRUE),
+  public_meeting    = get_mode(train_data_sp$public_meeting),
+  permit            = get_mode(train_data_sp$permit),
+  installer         = get_mode(train_data_sp$installer),
+  funder            = get_mode(train_data_sp$funder),
+  scheme_name       = get_mode(train_data_sp$scheme_name)
+)
+
+train_data_sp_imp <- imputation(train_data_sp, impute_values)
+test_data_sp_imp  <- imputation(test_data_sp,  impute_values)
+
+data_all_spatial_imputed <- bind_rows(train_data_sp_imp, test_data_sp_imp)
+saveRDS(data_all_spatial_imputed, "data/data_all_spatial_imputed.rds")
+x<- readRDS("data/data_all_spatial_imputed.rds")
