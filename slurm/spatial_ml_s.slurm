@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=sp
+#SBATCH --job-name=sp_s
 #SBATCH --output=../result/xgb_tuning_%j.out
 #SBATCH --error=../result/xgb_tuning_%j.err
 #SBATCH --time=12:00:00
@@ -18,4 +18,4 @@ module load r/4.3.3-gcc13-mkl
 export R_FUTURE_FORK_ENABLE=TRUE
 
 cd ~/seminar
-Rscript program/spatial_modelling.R
+Rscript program/spatial_modelling_s.R

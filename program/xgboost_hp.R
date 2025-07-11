@@ -119,4 +119,9 @@ best_params <- auto$learner$param_set$values
 saveRDS(best_params, file = "result/xgb_tuning_params2.rds")
 saveRDS(auto$learner, file = "result/xgb_tuning_model2.rds")
 saveRDS(auto$archive, file = "result/xgb_tuning_archive2.rds")
- y <- readRDS("result/xgb_tuning_params2.rds")
+
+archive <-readRDS("result/xgb_tuning_archive2.rds")
+dt <- as.data.table(archive)
+top10 <- dt[order(-classif.acc)][1:10]
+top10_params <- top10[, archive$search_space$ids(), with = FALSE]
+
