@@ -104,11 +104,13 @@ saveRDS(sub_imputed, "data/sub_imputed_with_la.rds")
 saveRDS(test_full_imp, "data/test_full_imp_with_la.rds")
 
 ########
-
 data_clean <- readRDS("data/fi_clean.rds")
-train_data_clean <- data_clean %>% filter(dataset == "train")
-test_data_clean <- data_clean %>% filter(dataset == "test")
 
+
+train_data_clean <- data_clean %>% filter(dataset == "train")
+n_distinct(train_data_clean$scheme_name)
+test_data_clean <- data_clean %>% filter(dataset == "test")
+test_full <- readRDS("data/test_all.rds")
 drop_cols <- c("dataset")
 
 ------------- # 1. Latitude/Longitude NICHT korrigieren (0/-2e-08 behalten) ---------
@@ -132,11 +134,6 @@ drop_cols <- c("dataset")
 
 train      <- train_data_clean %>% select(-all_of(drop_cols))
 test_full  <- test_data_clean %>% select(-all_of(drop_cols))
-test <- test_data_clean %>% 
-  filter(
-    is.na(latitude) | is.na(longitude)
-  ) %>% 
-  select(-all_of(drop_cols))
 
 get_mode <- function(x) {
   x <- x[!is.na(x)]
@@ -146,7 +143,6 @@ get_mode <- function(x) {
 
 gph_median          <- median(train$gps_height, na.rm = TRUE)
 yiu_median          <- median(train$years_in_use, na.rm = TRUE)
-
 
 sch_mode  <- get_mode(train$scheme_name)
 pub_mode  <- get_mode(train$public_meeting)
@@ -205,6 +201,7 @@ test_full_imp   <- impute_scheme_name(test_full_imp)
 sub_imputed   <- bind_rows(train_imp, test_imp)
 data_imputed  <- bind_rows(train_imp, test_full_imp)
 
+saveRDS(test_imp, "data/test_imp_invalid_coords.rds") #sub test
 saveRDS(data_imputed, "data/data_imputed.rds")
 saveRDS(train_imp, "data/train_imp.rds")
 saveRDS(sub_imputed, "data/sub_imputed.rds")

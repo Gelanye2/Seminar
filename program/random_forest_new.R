@@ -61,10 +61,10 @@ graph_ranger <- po_latlon_na %>>%
   po("removeconstants") %>>%
   lrn("classif.ranger",
       predict_type = "response",
-      num.trees = 1142,
+      num.trees = 1311,
       mtry = 4,
-      max.depth = 60,
-      min.node.size = 4,
+      max.depth = 48,
+      min.node.size = 7,
       importance = "impurity")
 
 
@@ -110,6 +110,8 @@ rr_imp$aggregate(msr("classif.bacc"))
 # 0.8129139, 
 
 ## new pipeline / latitude geändert -> 0.8221 mit 437...;with 629 0.8142455,score 0.8228; 0.8224 with 895...; 0.8232 with 995
+# 0.8236!!! with 1142, acc ; wihout scheme management  0.8116836
+# Änderung scheme name 0.8135882, 0.8234, 
 
 #library(mlr3filters) 
 #flt = flt("importance", learner = lrn("classif.ranger", importance = "impurity"))
@@ -136,8 +138,7 @@ result_imp_ranger_imputed <- data.frame(
 )
 
 saveRDS(result_imp_ranger_imputed, "data/predictions_ranger_imp_sub.rds")
-write.csv(result_imp_ranger_imputed, "sub50.csv", row.names = FALSE)
-
+write.csv(result_imp_ranger_imputed, "sub76.csv", row.names = FALSE)
 
 # ignore
 # ----------- 2. with rpart, No imputation-----------
@@ -195,6 +196,7 @@ task_test_fi <- TaskClassif$new(
   backend = test_fi,
   target  = "status_group"
 )
+
 
 pred_test_fi <- glrn_rpart$predict(task_test_fi)
 
@@ -341,5 +343,3 @@ result_imp_knn_imputed <- data.frame(
 )
 
 saveRDS(result_imp_knn_imputed, "data/predictions_knn_imp.rds")
-
-

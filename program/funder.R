@@ -326,5 +326,6 @@ data_clean <- data_clean %>%
   arrange(row_id) %>%
   select(-row_id)
 
+saveRDS(data_clean, "data/fi_clean_year.rds")
 saveRDS(data_clean, "data/fi_clean.rds")
 

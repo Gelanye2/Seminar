@@ -40,22 +40,16 @@ graph <-
      )
   ) %>>%
   po("encode", method = "treatment") %>>%
-  lrn("classif.lightgbm",
-      predict_type         = "response",
-      device_type          = "cpu",      # <–– hier CPU erzwingen
-      force_row_wise       = TRUE,       # <–– jetzt geht das
-      num_threads          = 4,          # korrektes Param-Naming
-      num_iterations       = 300L,       # statt nrounds
-      learning_rate        = 0.05,       # statt eta
-      max_depth            = 6,
-      num_leaves           = 63,         # passend zu 2^max_depth -1
-      feature_fraction     = 0.8,
-      bagging_fraction     = 0.8,
-      bagging_freq         = 1,
-      min_gain_to_split    = 0,
-      min_data_in_leaf     = 20,
-      verbose              = 1
-     
+  lrn("classif.xgboost",
+      predict_type            = "response",
+      nrounds                 = 300L,
+      eta                     = 0.05,
+      max_depth               = 6,
+      subsample               = 0.8,
+      colsample_bytree        = 0.8,
+      nthread          = 4,
+      verbose          = 1,
+      print_every_n    = 50
   )
 
 # Wrap as GraphLearner
@@ -66,7 +60,7 @@ resampling <- rsmp("cv", folds = 5)
 rr_fi <- mlr3::resample(task_fi, glrn_fi, resampling, store_models = FALSE)
 
 # Aggregate CV accuracy
-rr_fi$aggregate(msr("classif.acc")) #0.8017056 
+rr_fi$aggregate(msr("classif.acc")) #0.8017056  #with la 0.78
 rr_fi$aggregate(msr("classif.bacc")) #0.6513737
 # cat("XGBoost 5-fold CV Accuracy:", acc_5cv, "\n") #0.7841955
 
@@ -122,8 +116,8 @@ graph <-
   po("encode", method = "treatment") %>>%
   lrn("classif.xgboost",
       predict_type = "response",
-      nrounds                 = 1000L,
-      eta                     = 0.1,
+      nrounds                 = 200L,
+      eta                     = 0.2,
       max_depth               = 6,
       subsample               = 0.8,
       colsample_bytree        = 0.8,
@@ -134,7 +128,7 @@ graph <-
 glrn_imp <- GraphLearner$new(graph)
 
 # 5-fold CV
-resampling <- rsmp("cv", folds = 5)
+resampling <- rsmp("cv", folds = 3)
 rr_imp <- mlr3::resample(task_imp, glrn_imp, resampling, store_models = FALSE)
 
 # Aggregate CV accuracy
@@ -160,7 +154,9 @@ result_imp <- data.frame(
 )
 
 saveRDS(result_imp, "data/predictions_with_imp.rds")
+write.csv(result_imp, "subxg_imp1.csv", row.names = FALSE)
 
+#############
 
 scenarios <- list(
   baseline = character(0),

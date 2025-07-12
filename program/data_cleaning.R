@@ -139,7 +139,7 @@ data_all_clean <- data_all_clean %>% select(-id, -quantity_group,
                                            -region_code, -extraction_type_class,
                                            -extraction_type, -management,
                                            -management_group, -scheme_management,
-                                           -payment, -quality_group, -source, -year_recorded,
+                                           -payment, -quality_group, -source, 
                                            -source_type, -source_class,
                                            -waterpoint_type_group,
                                            -month_recorded, -construction_year)
