@@ -633,3 +633,443 @@ compare(
   max_diffs = Inf  # zeigt ALLES
 )
 
+
+
+# 0. SETUP AND DATA LOADING
+# ==================================
+# Ensure required packages are loaded
+.libPaths("/dss/dsshome1/01/ra59qow2/R/x86_64-pc-linux-gnu-library/4.3")
+library(mlr3verse)
+library(mlr3pipelines)
+library(mlr3learners)
+library(dplyr)
+library(future)
+plan(multisession, workers = 8)
+future::plan(future.seed = TRUE)
+set.seed(7832)
+
+fi_clean <- readRDS("data/fi_clean.rds") # no imp and all
+#imputed <- readRDS("data/data_imputed.rds") # all:train + test
+#sub_imputed <- readRDS("data/sub_imputed.rds") # train + test without longtitude and latitude
+#test_full_imp <- readRDS("data/test_full_imp.rds")
+test_all <- readRDS("data/test_all.rds")
+xgb_params <- readRDS("result/xgb_tuning_params2.rds")
+
+# 1. TASK DEFINITION
+# Use the imputed dataset for consistency
+#df_imp <- imputed
+#train_imp <- df_imp %>% filter(!is.na(status_group))
+#test_imp  <- test_full_imp
+
+# Split the data into training and testing sets.
+train_raw <- fi_clean %>% filter(!is.na(status_group))
+test_raw  <- fi_clean %>% filter(is.na(status_group))
+
+# Ensure the target variable is a factor.
+train_raw$status_group <- as.factor(train_raw$status_group)
+
+# Create the classification task from the raw (non-imputed) training data.
+task_raw <- TaskClassif$new(
+  id      = "waterpoints_raw_task",
+  backend = train_raw,
+  target  = "status_group")
+
+# 2. DEFINE BASE LEARNERS
+# --- Define common preprocessing steps ---
+po_char_to_factor <- po("colapply",
+                        id = "char_to_factor",
+                        applicator = function(x) if (is.character(x)) as.factor(x) else x,
+                        affect_columns = selector_type("character"))
+
+base_core_pipeline <- po_char_to_factor %>>%
+  po("removeconstants", id = "remove_constants") %>>%
+  po("encode", id = "one_hot_encode", method = "treatment")
+
+# --- Define specific PipeOps for data cleaning and imputation ---
+# PipeOp to convert near-zero latitude/longitude to NA.
+latlon_to_na_func <- function(v, threshold = 3e-8) {
+  v <- as.numeric(v); v[abs(v) < threshold] <- NA_real_; return(v)
+}
+
+po_latlon_na <- po("colapply", id = "latlon_to_na",
+                   param_vals = list(
+                     applicator   = latlon_to_na_func,
+                     affect_columns = selector_name(c("longitude", "latitude"))))
+
+po_latlon_flag <- po("mutate", id = "latlon_flag",
+                     param_vals = list(
+                       mutation = list(
+                         longitude_missing = ~ is.na(longitude),
+                         latitude_missing  = ~ is.na(latitude))))
+
+po_latlon_impute <- po("imputeconstant", id = "latlon_imputer",
+                       param_vals = list(
+                         affect_columns = selector_name(c("longitude", "latitude")),
+                         constant       = -999 ))
+
+# --- Construct the two final, separate pipelines ---
+# Pipeline A (for XGBoost): Converts invalid coordinates to NA and does NO imputation.
+# It leaves all NA values for the XGBoost algorithm to handle.
+pipeline_for_xgb <- po_latlon_na %>>%
+  base_core_pipeline
+
+# Pipeline B (for Ranger): This pipeline performs all imputation steps.
+po_impute_median <- po("imputemedian", id = "impute_median_numeric",
+                       affect_columns = selector_name(c("gps_height", "years_in_use")))
+
+po_impute_mode <- po("imputemode", id = "impute_mode_factors",
+                     affect_columns = selector_name(c("public_meeting", "permit", "installer", "funder", "scheme_name")))
+
+# Chain all the steps for the Ranger pipeline together.
+pipeline_for_ranger <- po_latlon_na %>>%
+  po_latlon_flag %>>%
+  po_latlon_impute %>>%
+  po_impute_median %>>%              
+  po_impute_mode %>>%    
+  base_core_pipeline
+
+# 3. GRAPH LEARNER DEFINITION
+# Graph Learner 1: XGBoost with its minimal preprocessing pipeline.
+# lrn_xgb_graph <- as_learner(
+#   pipeline_for_xgb %>>%
+#     lrn("classif.xgboost", predict_type = "prob",
+#         nrounds = xgb_params$classif.xgboost.nrounds, 
+#         eta = xgb_params$classif.xgboost.eta, 
+#         max_depth = xgb_params$classif.xgboost.max_depth, 
+#         colsample_bytree = xgb_params$classif.xgboost.colsample_bytree,
+#         eval_metric = xgb_params$classif.xgboost.eval_metric,
+#         gamma = xgb_params$classif.xgboost.gamma,
+#         alpha = xgb_params$classif.xgboost.alpha,
+#         lambda = xgb_params$classif.xgboost.lambda,
+#         min_child_weight = xgb_params$classif.xgboost.min_child_weight,
+#         subsample = xgb_params$classif.xgboost.subsample,
+#         nthread = 8))
+lrn_xgb_graph <- as_learner(
+  pipeline_for_xgb %>>%
+    lrn("classif.xgboost",
+        predict_type = "prob",
+        nrounds = 1000L,
+        eta = 0.1,
+        max_depth = 6,
+        subsample = 0.8,
+        colsample_bytree = 0.8,
+        nthread = 8
+    )
+)
+lrn_xgb_graph$id <- "xgboost.with_na"
+
+# Graph Learner 2: Ranger with its FULL imputation pipeline.
+lrn_ranger_graph <- as_learner(
+  pipeline_for_ranger %>>%
+    lrn("classif.ranger",
+        predict_type = "prob",
+        num.trees = 500,
+        mtry = floor(sqrt(ncol(train_raw) - 1)), # ncol-1 for target
+        min.node.size = 1,
+        num.threads = 8
+    )
+)
+# lrn("classif.ranger", predict_type = "prob", 
+#     num.trees = 1142,
+#     mtry = 4,
+#     max.depth = 60,
+#     min.node.size = 4,
+#     importance = "impurity",
+#     num.threads = 8))
+lrn_ranger_graph$id <- "ranger.imputed"
+
+# 4. STACKING ENSEMBLE DEFINITION
+search_space_super_ranger = ps(
+  num.trees     = p_int(50, 400),
+  min.node.size = p_int(1, 20),
+  # The input features for the super learner are the prediction probabilities from
+  # 2 base learners for 3 classes, so 2*3=6 features. mtry can be 1 to 6.
+  mtry          = p_int(1, 6)
+)
+
+at_super_ranger = AutoTuner$new(
+  learner = lrn("classif.ranger", id = "ranger", predict_type = "prob"),
+  resampling = rsmp("cv", folds = 3), # Inner CV for tuning
+  measure = msr("classif.bacc"),      # Tune for balanced accuracy
+  search_space = search_space_super_ranger,
+  terminator = trm("evals", n_evals = 30), # Try 30 different combinations
+  tuner = tnr("random_search")
+)
+
+specialized_base_learners <- list(lrn_xgb_graph, lrn_ranger_graph)
+super_learners <- list(
+  lrn("classif.multinom", id = "multinom", predict_type = "prob"),
+  at_super_ranger
+  #lrn("classif.ranger", id = "ranger", predict_type = "prob", num.trees = 100)
+)
+
+stacked_learners <- lapply(super_learners, function(sl) {
+  as_learner(
+    ppl("stacking",
+        base_learners = specialized_base_learners,
+        super_learner = sl,
+        method = "cv",
+        folds = 5,
+        use_features = FALSE 
+    ),
+    id = paste0("stack_", sl$id)
+  )
+})
+
+# 5. BENCHMARKING (MODEL EVALUATION)
+resampling_cv5 <- rsmp("cv", folds = 5)
+design <- benchmark_grid(tasks = task_raw, learners = stacked_learners,
+                         resamplings = resampling_cv5)
+bmr <- benchmark(design)
+print(bmr$aggregate(msrs(c("classif.acc", "classif.bacc"))))
+
+bmr_aggr <- bmr$aggregate(msrs(c("classif.bacc")))
+best_learner_id <- bmr_aggr[order(-classif.bacc)]$learner_id[1]
+final_learner <- Filter(function(l) l$id == best_learner_id, stacked_learners)[[1]]
+
+# 6. FINAL MODEL TRAINING AND PREDICTION
+final_learner$train(task_raw)
+final_predictions <- final_learner$predict_newdata(newdata = test_raw)
+
+# 7. GENERATE SUBMISSION FILE
+result_stacking <- data.frame(
+  id           = test_all$id,
+  status_group = final_predictions$response,
+  stringsAsFactors = FALSE)
+write.csv(result_stacking, "result/submission_stacking.csv", row.names = FALSE)
+
+all_artifacts <- list(
+  benchmark_result = bmr,
+  benchmark_aggregation = bmr_aggr,
+  best_learner_id = best_learner_id,
+  final_trained_learner = final_learner,
+  final_predictions_object = final_predictions,
+  submission_dataframe = result_stacking)
+saveRDS(all_artifacts, file = "result/all_artifacts.rds")
+
+
+# 0. SETUP AND DATA LOADING
+# ==================================
+# Ensure required packages are loaded
+library(bbotk)
+library(smoof)
+library(mlr3pipelines)
+library(mlr3learners)
+library(dplyr)
+library(future)
+library(mlr3tuning) 
+library(mlr3mbo)
+plan(multisession, workers = 8)
+future::plan(future.seed = TRUE)
+set.seed(7832)
+
+# fi_clean <- readRDS("data/fi_clean.rds") # no imp and all
+imputed <- readRDS("data/data_imputed.rds") 
+#sub_imputed <- readRDS("data/sub_imputed.rds") # train + test without longtitude and latitude
+test_full_imp <- readRDS("data/test_full_imp.rds")
+test_all <- readRDS("data/test_all.rds")
+log_params <- data.table(
+  nrounds          = 482L,
+  eta_log        = -3.007022,
+  alpha_log      = -3.815309,
+  lambda_log     =  0.2757714,
+  colsample_bytree = 0.7244709,
+  gamma            = 0.09409377,
+  max_depth        = 13L,
+  min_child_weight = 1.109858,
+  subsample        = 0.8931599
+)
+
+param.set <- copy(log_params)[, `:=`(
+  eta    = exp(eta_log10),
+  alpha  = exp(alpha_log10),
+  lambda = exp(lambda_log10)
+)][, c("eta_log", "alpha_log", "lambda_log") := NULL]
+
+# 1. TASK DEFINITION
+# Use the imputed dataset for consistency
+df_imp <- imputed
+train_imp <- df_imp %>% filter(!is.na(status_group))
+test_imp  <- test_full_imp
+
+# train_imp <- fi_clean %>% filter(!is.na(status_group))
+# test_imp  <- fi_clean %>% filter( is.na(status_group))
+
+# Ensure target is a factor for classification
+train_imp$status_group <- as.factor(train_imp$status_group)
+
+# Create the training task
+task <- TaskClassif$new(
+  id      = "waterpoints_stacking",
+  backend = train_imp,
+  target  = "status_group"
+)
+
+# 2. DEFINE BASE LEARNERS
+# --- Preprocessing Pipelines ---
+# Function to treat near-zero longitude/latitude as NA
+latlon_to_na <- function(v, thr = 3e-8) {
+  v <- as.numeric(v)
+  v[ abs(v) < thr ] <- NA_real_
+  v
+}
+po_latlon_na <- po("colapply", id = "latlon_to_na",
+                   param_vals = list(
+                     applicator     = latlon_to_na,
+                     affect_columns = selector_name(c("longitude", "latitude"))
+                   ))
+
+po_latlon_flag <- po("mutate", id = "latlon_flag",
+                     param_vals = list(
+                       mutation = list(
+                         longitude_missing = ~ is.na(longitude),
+                         latitude_missing  = ~ is.na(latitude)
+                       )
+                     ))
+
+po_latlon_impute <- po("imputeconstant", id = "latlon_imputer",
+                       param_vals = list(
+                         affect_columns = selector_name(c("longitude", "latitude")),
+                         constant       = -999
+                       ))
+
+po_char2fac <- po("colapply", id = "char2factor",
+                  param_vals = list(
+                    applicator     = as.factor,
+                    affect_columns = selector_type("character")
+                  ))
+
+base_pipeline <- ppl("greplicate",
+                     po_latlon_na %>>%
+                       po_latlon_flag %>>%
+                       po_latlon_impute %>>%
+                       po_char2fac %>>%
+                       po("removeconstants") %>>%
+                       po("encode", param_vals = list(method = "treatment")),
+                     1
+)
+# --- Create Learner Instances ---
+# 1. XGBoost: Uses base pipeline
+lrn_xgb <- as_learner(
+  base_pipeline %>>%
+    lrn("classif.xgboost",
+        predict_type = "prob",
+        nrounds = param.set$nrounds,
+        eta = param.set$eta,
+        max_depth = param.set$max_depth,
+        subsample = param.set$subsample,
+        colsample_bytree = param.set$colsample_bytree,
+        alpha = param.set$alpha,
+        lambda = param.set$lambda,
+        gamma = param.set$gamma,
+        min_child_weight = param.set$min_child_weight,
+        nthread = 8
+    )
+)
+lrn_xgb$id <- "xgboost.base"
+# 2. Ranger: Tree-models are robust to scaling, but we use a minimal pipeline for consistency
+lrn_ranger <- as_learner(
+  base_pipeline %>>%
+    lrn("classif.ranger",
+        predict_type = "prob",
+        num.trees = 1311,
+        mtry = 4, 
+        min.node.size = 7,
+        max.depth = 48,
+        num.threads = 8
+    )
+)
+lrn_ranger$id <- "ranger.base"
+base_learners <- list(lrn_xgb, lrn_ranger)
+
+# 4. STACKING ENSEMBLE DEFINITION
+# ===================================
+# Define candidate super learners
+super_learners <- list(
+  lrn("classif.multinom", id = "multinom", predict_type = "prob"),
+  lrn("classif.ranger", id = "ranger", predict_type = "prob", num.trees = 100)
+)
+
+# Create a list of stacking learners, one for each super learner
+stacked_learners <- lapply(super_learners, function(sl) {
+  as_learner(
+    ppl("stacking",
+        base_learners = base_learners,
+        super_learner = sl,
+        method = "cv",
+        folds = 5,
+        use_features = FALSE # A robust starting point
+    ),
+    id = paste0("stack_", sl$id)
+  )
+})
+
+# --- Run Benchmark to Select the Best Stacking Configuration ---
+resampling <- rsmp("cv", folds = 5) # 3-fold CV for speed, 5 or 10 is more robust
+design <- benchmark_grid(
+  tasks = task,
+  learners = stacked_learners,
+  resamplings = resampling
+)
+
+# This step is computationally intensive
+print("Starting stacking benchmark... this may take a while.")
+bmr <- benchmark(design)
+print("Benchmark finished.")
+
+# Review aggregated results to select the best model
+print(bmr$aggregate(msrs(c("classif.acc", "classif.bacc"))))
+# 0.8072171    0.6556998
+
+# 4. FINAL MODEL TRAINING AND PREDICTION
+# ==============================
+# Select the best performing learner based on benchmark results.
+# We will proceed with the first one (log_reg) by default.
+final_learner <- stacked_learners[[1]]
+
+print(paste("Final model selected:", final_learner$id))
+print("Training final stacking model on full training data...")
+
+final_learner$train(task)
+
+print("Final model training complete.")
+print("Predicting on the test set...")
+
+# Create the test task
+task_test <- TaskClassif$new(
+  id      = "waterpoints_test",
+  backend = test_imp,
+  target  = "status_group"
+)
+
+# Generate predictions
+final_predictions <- final_learner$predict(task_test)
+
+print("Prediction complete.")
+
+# 5. GENERATE SUBMISSION FILE
+# ======================
+result_stacking <- data.frame(
+  id           = test_all$id,
+  status_group = final_predictions$response,
+  stringsAsFactors = FALSE
+)
+
+# Save results
+saveRDS(result_stacking, "data/predictions_stacking.rds")
+write.csv(result_stacking, "data/submission_stacking.csv", row.names = FALSE)
+
+all_artifacts <- list(
+  benchmark_result = bmr,
+  best_learner_id = final_learner$id,
+  final_trained_learner = final_learner,
+  final_predictions_object = final_predictions,
+  submission_dataframe = result_stacking
+)
+artifact_filename <- "result/final_artifacts_stacking.rds"
+saveRDS(all_artifacts, file = artifact_filename)
+
+print("Process finished successfully. Submission and artifacts saved.")
+
+
+
