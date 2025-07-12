@@ -10,7 +10,9 @@ workers <- as.numeric(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1"))
 print(workers)
 plan(multisession, workers = 16)
 data_spatial_ml <- readRDS("data/data_all_spatial_imputed.rds") %>%
-  mutate(set = ifelse(is.na(status_group), "test", "train"))
+  mutate(set = ifelse(is.na(status_group), "test", "train")) %>%
+  mutate(location_cluster = as.factor(location_cluster),
+         location_cluster2 = as.factor(location_cluster2))
 
 data_spatial_ml_copy <- data_spatial_ml %>% select(-location_cluster, -set)
 

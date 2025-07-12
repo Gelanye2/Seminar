@@ -90,8 +90,8 @@ graph <- po_latlon_na %>>%
       eval_metric = "mlogloss",
       early_stopping_rounds = 10,
       nrounds = to_tune(upper = 500, internal = TRUE),
-      eta = to_tune(0.11,0.17, logscale = TRUE),
-      max_depth = to_tune(6,16),
+      eta = to_tune(0.01,0.2, logscale = TRUE),
+      max_depth = to_tune(6,14),
       colsample_bytree = to_tune(0.7, 1),
       subsample = to_tune(0.7, 1),
       lambda = to_tune(1, 5, logscale = TRUE),
@@ -106,22 +106,16 @@ set_validate(base_lrn, validate = "test", ids = "classif.xgboost")
 
 auto <- AutoTuner$new(
   learner = base_lrn,
-  resampling = rsmp("cv", folds = 3),
+  resampling = rsmp("cv", folds = 5),
   measure = msr("classif.acc"),
   tuner = tnr("mbo"),
-  terminator = trm("evals", n_evals = 50)
+  terminator = trm("evals", n_evals = 200)
 )
 
 auto$train(task_ll)
 
 best_params <- auto$learner$param_set$values
 
-saveRDS(best_params, file = "result/xgb_tuning_params2.rds")
-saveRDS(auto$learner, file = "result/xgb_tuning_model2.rds")
-saveRDS(auto$archive, file = "result/xgb_tuning_archive2.rds")
-
-archive <-readRDS("result/xgb_tuning_archive2.rds")
-dt <- as.data.table(archive)
-top10 <- dt[order(-classif.acc)][1:10]
-top10_params <- top10[, archive$search_space$ids(), with = FALSE]
-
+saveRDS(best_params, file = "result/xgb_tuning_params3.rds")
+saveRDS(auto$learner, file = "result/xgb_tuning_model3.rds")
+saveRDS(auto$archive, file = "result/xgb_tuning_archive3.rds")
