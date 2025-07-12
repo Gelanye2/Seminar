@@ -11,7 +11,8 @@ test_all_spatial$id <- NA
 dups <- test_all_spatial %>%
   group_by(longitude, latitude) %>%
   filter(n() > 1) %>%
-  ungroup()
+  ungroup() %>%
+  arrange(longitude, latitude)
 
 dup1 <- which(test_all_spatial$longitude == dups$longitude[1] &
                  test_all_spatial$latitude  == dups$latitude[1])
@@ -33,8 +34,8 @@ dup4 <- which(test_all_spatial$longitude == dups$longitude[7] &
 test_all_spatial$id[dup4] <- c(23564,30889)
 
 test_id_ref <- test_all %>%
+  filter(longitude > 25) %>%
   select(id, longitude, latitude) %>%
-  filter(!is.na(id)) %>%
   distinct(longitude, latitude, .keep_all = TRUE)
 
 #find unmatched rows
@@ -68,3 +69,5 @@ sub_all <- sub_all %>%
 #write csv
 write_csv(sub_all, "submission/spatial_submission1.csv")
 write_csv(sub_all2, "submission/spatial_submission2.csv")
+
+identical(sub_all$id, sub_form$id) # should be TRUE
