@@ -9,6 +9,7 @@ library(mlr3tuning)
 library(mlr3mbo)
 library(data.table)
 library(scoring)
+library(purrr)
 plan(multisession, workers = 20)
 future::plan(future.seed = TRUE)
 set.seed(7832)
@@ -120,8 +121,12 @@ n_samples_per_group <- round(table(train_imp$status_group) * 0.25)
 set.seed(7832) # for reproducibility
 train_imp_subset <- train_imp %>%
   group_by(status_group) %>%
-  slice_sample(n = n_samples_per_group[cur_group_id()], replace = FALSE) %>%
-  ungroup()
+  group_split() %>%
+  map_dfr(function(df_group) {
+    group_name <- df_group$status_group[1]
+    n_to_sample <- n_samples_per_group[as.character(group_name)]
+    slice_sample(df_group, n = n_to_sample, replace = FALSE)
+  })
 
 message(paste("Subset created with", nrow(train_imp_subset), "rows."))
 print("Original data class distribution:")
