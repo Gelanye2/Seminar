@@ -8,31 +8,37 @@ library(future)
 library(mlr3tuning) 
 library(mlr3mbo)
 library(data.table)
-plan(multisession, workers = 8)
+plan(multisession, workers = 16)
 future::plan(future.seed = TRUE)
 set.seed(7832)
 
 # fi_clean <- readRDS("data/fi_clean.rds") # no imp and all
-imputed <- readRDS("data/data_imputed_scheme.rds")
+imputed <- readRDS("data/data_imputed_enhanced.rds")
 #sub_imputed <- readRDS("data/sub_imputed.rds") # train + test without longtitude and latitude
 # test_full_imp <- readRDS("data/test_full_imp.rds")
 test_all <- readRDS("data/test_all.rds")
 log_params <- data.table(
-  nrounds          = 482L,
-  eta_log        = -3.007022,
-  alpha_log      = -3.815309,
-  lambda_log     =  0.2757714,
-  colsample_bytree = 0.7244709,
-  gamma            = 0.09409377,
-  max_depth        = 13L,
-  min_child_weight = 1.109858,
-  subsample        = 0.8931599
+  nrounds          = 385L,
+  eta_log        = 0.02869972,
+  alpha_log      = 0.07850012,
+  lambda_log     =  1.276562,
+  colsample_bytree = 0.745822,
+  gamma            = 0.2551381,
+  max_depth        = 16L,
+  min_child_weight = 1.581652,
+  subsample        = 0.9090084
 )
 
+# param.set <- copy(log_params)[, `:=`(
+#   eta    = exp(eta_log),
+#   alpha  = exp(alpha_log),
+#   lambda = exp(lambda_log)
+# )][, c("eta_log", "alpha_log", "lambda_log") := NULL]
+
 param.set <- copy(log_params)[, `:=`(
-  eta    = exp(eta_log),
-  alpha  = exp(alpha_log),
-  lambda = exp(lambda_log)
+  eta    = eta_log,
+  alpha  = alpha_log,
+  lambda = lambda_log
 )][, c("eta_log", "alpha_log", "lambda_log") := NULL]
 
 # 1. TASK DEFINITION
@@ -87,15 +93,13 @@ po_char2fac <- po("colapply", id = "char2factor",
                     affect_columns = selector_type("character")
                   ))
 
-base_pipeline <- ppl("greplicate",
-                     po_latlon_na %>>%
-                       po_latlon_flag %>>%
-                       po_latlon_impute %>>%
-                       po_char2fac %>>%
-                     po("removeconstants") %>>%
-                       po("encode", param_vals = list(method = "treatment")),
-                     1
-)
+base_pipeline <- po_latlon_na %>>%
+  po_latlon_flag %>>%
+  po_latlon_impute %>>%
+  po_char2fac %>>%
+  po("removeconstants") %>>%
+  po("encode", param_vals = list(method = "treatment"))
+
 # --- Create Learner Instances ---
 # 1. XGBoost: Uses base pipeline
 lrn_xgb <- as_learner(
@@ -111,7 +115,8 @@ lrn_xgb <- as_learner(
         lambda = param.set$lambda,
         gamma = param.set$gamma,
         min_child_weight = param.set$min_child_weight,
-        nthread = 8
+        eval_metric = "mlogloss",
+        nthread = 16
     )
 )
 lrn_xgb$id <- "xgboost.base"
@@ -120,94 +125,99 @@ lrn_ranger <- as_learner(
   base_pipeline %>>%
     lrn("classif.ranger",
         predict_type = "prob",
-        num.trees = 1311,
+        num.trees = 873,
         mtry = 4, 
-        min.node.size = 7,
-        max.depth = 48,
-        num.threads = 8
+        min.node.size = 5,
+        max.depth = 85,
+        num.threads = 16
     )
 )
 lrn_ranger$id <- "ranger.base"
 base_learners <- list(lrn_xgb, lrn_ranger)
 
-# --- MODEL A: Stacking with Ranger Super Learner ---
-message("Defining Model A with Ranger super learner...")
-lrn_super_ranger <- lrn("classif.ranger", id = "ranger_super", predict_type = "prob", num.threads = 8)
+# --- TRAIN & PREDICT: STANDALONE MODELS (XGBoost & Ranger) ----
+message("Training standalone XGBoost model...")
+lrn_xgb$train(task)
+preds_xgb_test <- lrn_xgb$predict_newdata(test_imp)
 
-stacked_learner_A <- as_learner(
-  ppl("stacking",
-      base_learners = base_learners,
-      super_learner = lrn_super_ranger,
-      method = "cv", folds = 5, use_features = FALSE
-  ), id = "stack_ranger_super"
-)
+message("Training standalone Ranger model...")
+lrn_ranger$train(task)
+preds_ranger_test <- lrn_ranger$predict_newdata(test_imp)
 
-message("Training Model A...")
-stacked_learner_A$train(task)
-message("Predicting with Model A...")
-predictions_A <- stacked_learner_A$predict_newdata(newdata = test_imp)
-saveRDS(predictions_A, file = "result/predictions_A_ranger_scheme.rds")
-saveRDS(stacked_learner_A, file = "result/model_A_stack_ranger_scheme.rds")
-message("Model A (Ranger Super Learner) predictions saved.")
+# --- BLENDING: FIND WEIGHTS & PREDICT ----
+message("Executing Blending...")
+cv5 <- rsmp("cv", folds = 5)
+rr_xgb <- resample(task, lrn_xgb, cv5, store_models = FALSE)
+rr_ranger <- resample(task, lrn_ranger, cv5, store_models = FALSE)
 
-# --- Method A: Direct result from the best single model (assuming Model A) ---
-message("Generating submission for Method A (direct result from Ranger super learner)...")
-submission_method_A <- data.frame(
-  id           = test_all$id,
-  status_group = predictions_A$response,
-  stringsAsFactors = FALSE
-)
-write.csv(submission_method_A, "result/submission_method_A_scheme.csv", row.names = FALSE)
-message("Method A submission file created.")
+preds_xgb_oof <- rr_xgb$prediction()$prob[order(rr_xgb$prediction()$row_id), ]
+preds_ranger_oof <- rr_ranger$prediction()$prob[order(rr_ranger$prediction()$row_id), ]
+true_labels <- task$truth()
 
-# --- MODEL B: Stacking with Multinom Super Learner ---
-message("Defining Model B with Multinom super learner...")
+message("... searching for optimal blending weight 'w'.")
+w_values <- seq(0, 1, by = 0.01)
+logloss_scores <- numeric(length(w_values))
+
+for (i in seq_along(w_values)) {
+  w <- w_values[i]
+  blended_preds_oof <- w * preds_xgb_oof + (1 - w) * preds_ranger_oof
+  logloss_scores[i] <- logloss(truth = true_labels, prob = blended_preds_oof)
+}
+
+best_w <- w_values[which.min(logloss_scores)]
+message(paste("... optimal weight for XGBoost (w) is:", round(best_w, 3)))
+
+# --- 4.3. Apply best weight to test set predictions ---
+blended_preds_test_prob <- best_w * preds_xgb_test$prob + (1 - best_w) * preds_ranger_test$prob
+blended_response <- colnames(blended_preds_test_prob)[apply(blended_preds_test_prob, 1, which.max)]
+
+# --- MODEL : Stacking with Multinom Super Learner ---
+message("Defining Model with Multinom super learner...")
 # Multinom is a linear model, providing diversity to the tree-based Ranger
 lrn_super_multinom <- lrn("classif.multinom", predict_type = "prob", MaxNWts = 5000)
 
-stacked_learner_B <- as_learner(
+stacked_learner_M <- as_learner(
   ppl("stacking",
       base_learners = base_learners, # Re-using the same base learners
       super_learner = lrn_super_multinom,
-      method = "cv", folds = 5, use_features = TRUE
+      method = "cv", folds = 5, use_features = FALSE
   ), id = "stack_multinom_super"
 )
 
-message("Training Model B...")
-stacked_learner_B$train(task)
-message("Predicting with Model B...")
-predictions_B <- stacked_learner_B$predict_newdata(newdata = test_imp)
-saveRDS(predictions_B, file = "result/predictions_B_multinom_scheme.rds")
-saveRDS(stacked_learner_B, file = "result/model_B_stack_multinom_scheme.rds")
-message("Model B (Multinom Super Learner) predictions saved.")
+message("Training Model Multinom...")
+stacked_learner_M$train(task)
+message("Predicting with Model Multinom...")
+predictions_M <- stacked_learner_M$predict_newdata(newdata = test_imp)
+saveRDS(predictions_M, file = "result/predictions_multinom_enhance.rds")
+saveRDS(stacked_learner_M, file = "result/stack_multinom_enhance.rds")
+message("Model (Multinom Super Learner) predictions saved.")
 
-# --- Method B: Direct result from the best single model (assuming Model A) ---
-message("Generating submission for Method B (direct result from Multinom super learner)...")
-submission_method_B <- data.frame(
+# --- Generate Submission File from Stacking Model ---
+message("Generating submission from the stacking model (Multinom super learner)...")
+submission_xgb <- data.frame(
   id           = test_all$id,
-  status_group = predictions_B$response,
+  status_group = preds_xgb_test$response,
   stringsAsFactors = FALSE
 )
-write.csv(submission_method_B, "result/submission_method_B_scheme.csv", row.names = FALSE)
-message("Method B submission file created.")
-
-
-# --- Method C: Blending the predictions from Model A and Model B ---
-message("Generating submission for Method (blending Ranger and Multinom super learners)...")
-
-# Average the probabilities
-blended_prob <- (predictions_A$prob + predictions_B$prob) / 2
-
-# For each row, find the class with the highest average probability
-final_blended_response <- colnames(blended_prob)[apply(blended_prob, 1, which.max)]
-
-# Create the blended submission dataframe
-submission_method_blended <- data.frame(
+write.csv(submission_xgb, "result/submission_xgb.csv", row.names = FALSE)
+submission_ranger <- data.frame(
   id           = test_all$id,
-  status_group = final_blended_response,
+  status_group = preds_ranger_test$response,
   stringsAsFactors = FALSE
 )
-write.csv(submission_method_blended, "result/submission_blended_scheme.csv", row.names = FALSE)
-message("Method (blended) submission file created.")
-message("All processes finished successfully.")
+write.csv(submission_ranger, "result/submission_ranger.csv", row.names = FALSE)
+submission_blend <- data.frame(
+  id           = test_all$id,
+  status_group = blended_response,
+  stringsAsFactors = FALSE
+)
+write.csv(submission_blend, "result/submission_blend.csv", row.names = FALSE)
+submission_stack <- data.frame(
+  id           = test_all$id,
+  status_group = predictions_M$response,
+  stringsAsFactors = FALSE
+)
+write.csv(submission_stack, "result/submission_stack.csv", row.names = FALSE)
+message("Method M submission file created.")
+message("All 4 submission files (xgb, ranger, blending, stacking) created successfully in 'result/' folder.")
 
