@@ -225,13 +225,13 @@ cv5 <- rsmp("cv", folds = 5)
 rr_xgb_final <- resample(task, lrn_xgb_final, cv5, store_models = FALSE)
 rr_ranger_final <- resample(task, lrn_ranger_final, cv5, store_models = FALSE)
 
-preds_xgb_oof <- rr_xgb_final$prediction()$prob[order(rr_xgb_final$prediction()$row_id), ]
-preds_ranger_oof <- rr_ranger_final$prediction()$prob[order(rr_ranger_final$prediction()$row_id), ]
+preds_xgb_oof <- rr_xgb_final$prediction()$prob[order(rr_xgb_final$prediction()$row_ids), ]
+preds_ranger_oof <- rr_ranger_final$prediction()$prob[order(rr_ranger_final$prediction()$row_ids), ]
 
 message("... searching for optimal blending weight 'w'.")
 w_values <- seq(0, 1, by = 0.01)
 logloss_scores <- numeric(length(w_values))
-truth_sorted <- rr_xgb_final$prediction()$truth[order(rr_xgb_final$prediction()$row_id)]
+truth_sorted <- rr_xgb_final$prediction()$truth[order(rr_xgb_final$prediction()$row_ids)]
 true_matrix <- model.matrix(~ truth_sorted - 1)
 
 for (i in seq_along(w_values)) {
