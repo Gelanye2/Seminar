@@ -14,7 +14,7 @@ workers <- as.numeric(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "1"))
 print(workers)
 plan(multisession, workers = 16)
 set.seed(7832)
-df <- readRDS("data/data_imputed.rds")
+df <- readRDS("data/data_imputed_enhanced.rds")
 
 # ---- Hyperparameter tuning (region_district and lga)----
 # eta 1e-4, 1  Logscale
@@ -110,12 +110,27 @@ auto <- AutoTuner$new(
   measure = msr("classif.acc"),
   tuner = tnr("mbo"),
   terminator = trm("evals", n_evals = 120)
-  )
+)
 
 auto$train(task_ll)
 
 best_params <- auto$learner$param_set$values
 
-saveRDS(best_params, file = "result/xgb_tuning_params3.rds")
-saveRDS(auto$learner, file = "result/xgb_tuning_model3.rds")
-saveRDS(auto$archive, file = "result/xgb_tuning_archive3.rds")
+saveRDS(best_params, file = "result/xgb_tuning_params_l.rds")
+saveRDS(auto$learner, file = "result/xgb_tuning_model_l.rds")
+saveRDS(auto$archive, file = "result/xgb_tuning_archive_l.rds")
+
+best_params <- readRDS("result/xgb_tuning_params_l.rds")
+
+archive <- readRDS("result/xgb_tuning_archive_l.rds")
+dt <- as.data.table(archive)
+names(dt)
+top10 <- dt[order(-classif.acc)][1:10]
+
+top10_params <- top10[, archive$search_space$ids(), with = FALSE]
+
+saveRDS(top10_params, "result/top10_xgb_params.rds")
+
+print(top10_params)
+
+

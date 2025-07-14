@@ -1,5 +1,5 @@
 data_enhanced <- readRDS("data/data_all_spatial0.RDS") %>%
-  select(-population_500, -location_cluster, year_recorded, -dataset) %>%
+  select(-population_500, -location_cluster, -year_recorded, -dataset) %>%
   mutate(location_cluster2 = as.factor(location_cluster2)) %>%
   mutate(population_1k = ifelse(is.na(population_1k), -999, population_1k),
                                                                   location_cluster2 = ifelse(is.na(location_cluster2), -999, location_cluster2),
@@ -24,4 +24,3 @@ test_data_sp_imp  <- imputation(test_data_sp,  impute_values)
 data_imputed_enhanced <- bind_rows(train_data_sp_imp, test_data_sp_imp)
 saveRDS(data_imputed_enhanced, "data/data_imputed_enhanced.rds")
 saveRDS(data_enhanced, "data/data_enhanced.rds")
-
