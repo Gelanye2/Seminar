@@ -140,7 +140,7 @@ message("... defining the hyperparameter search space for teamwork.")
 search_space_stack = ps(
   # XGBoost parameters
   xgboost.base.max_depth = p_int(lower = 4, upper = 9),
-  xgboost.base.nrounds = p_int(lower = 200, upper = 500),
+  xgboost.base.nrounds = p_int(lower = 200, upper = 800),
   xgboost.base.eta = p_dbl(lower = 0.01, upper = 0.2, logscale = TRUE),
   xgboost.base.gamma = p_dbl(lower = 0, upper = 5),
   xgboost.base.lambda = p_dbl(lower = 0.1, upper = 10, logscale = TRUE),
