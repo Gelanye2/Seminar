@@ -1,22 +1,21 @@
 # 0. SETUP AND DATA LOADING
 # ==================================
 # Ensure required packages are loaded
-library(bbotk)
-library(smoof)
 library(mlr3pipelines)
 library(mlr3learners)
 library(dplyr)
 library(future)
 library(mlr3tuning) 
 library(mlr3mbo)
+library(data.table)
 plan(multisession, workers = 8)
 future::plan(future.seed = TRUE)
 set.seed(7832)
 
 # fi_clean <- readRDS("data/fi_clean.rds") # no imp and all
-imputed <- readRDS("data/data_imputed.rds")
+imputed <- readRDS("data/data_imputed_scheme.rds")
 #sub_imputed <- readRDS("data/sub_imputed.rds") # train + test without longtitude and latitude
-test_full_imp <- readRDS("data/test_full_imp.rds")
+# test_full_imp <- readRDS("data/test_full_imp.rds")
 test_all <- readRDS("data/test_all.rds")
 log_params <- data.table(
   nrounds          = 482L,
@@ -38,9 +37,8 @@ param.set <- copy(log_params)[, `:=`(
 
 # 1. TASK DEFINITION
 # Use the imputed dataset for consistency
-df_imp <- imputed
-train_imp <- df_imp %>% filter(!is.na(status_group))
-test_imp  <- test_full_imp
+train_imp <- imputed %>% filter(!is.na(status_group))
+test_imp  <- imputed %>% filter(is.na(status_group))
 
 # train_imp <- fi_clean %>% filter(!is.na(status_group))
 # test_imp  <- fi_clean %>% filter( is.na(status_group))
@@ -140,41 +138,17 @@ stacked_learner_A <- as_learner(
   ppl("stacking",
       base_learners = base_learners,
       super_learner = lrn_super_ranger,
-      method = "cv", folds = 5, use_features = FALSE,
-      stratify = TRUE
+      method = "cv", folds = 5, use_features = FALSE
   ), id = "stack_ranger_super"
 )
 
 message("Training Model A...")
 stacked_learner_A$train(task)
 message("Predicting with Model A...")
-predictions_A <- stacked_learner_A$predict_newdata(newdata = test_full_imp)
-saveRDS(predictions_A, file = "result/predictions_A_ranger_super.rds")
-saveRDS(stacked_learner_A, file = "result/model_A_stack_ranger_super.rds")
+predictions_A <- stacked_learner_A$predict_newdata(newdata = test_imp)
+saveRDS(predictions_A, file = "result/predictions_A_ranger_scheme.rds")
+saveRDS(stacked_learner_A, file = "result/model_A_stack_ranger_scheme.rds")
 message("Model A (Ranger Super Learner) predictions saved.")
-
-
-# --- MODEL B: Stacking with Multinom Super Learner ---
-message("Defining Model B with Multinom super learner...")
-# Multinom is a linear model, providing diversity to the tree-based Ranger
-lrn_super_multinom <- lrn("classif.multinom", predict_type = "prob", trace = FALSE)
-
-stacked_learner_B <- as_learner(
-  ppl("stacking",
-      base_learners = base_learners, # Re-using the same base learners
-      super_learner = lrn_super_multinom,
-      method = "cv", folds = 5, use_features = FALSE,
-      stratify = TRUE
-  ), id = "stack_multinom_super"
-)
-
-message("Training Model B...")
-stacked_learner_B$train(task)
-message("Predicting with Model B...")
-predictions_B <- stacked_learner_B$predict_newdata(newdata = test_full_imp)
-saveRDS(predictions_B, file = "result/predictions_B_multinom_super.rds")
-saveRDS(stacked_learner_B, file = "result/model_B_stack_multinom_super.rds")
-message("Model B (Multinom Super Learner) predictions saved.")
 
 # --- Method A: Direct result from the best single model (assuming Model A) ---
 message("Generating submission for Method A (direct result from Ranger super learner)...")
@@ -183,8 +157,29 @@ submission_method_A <- data.frame(
   status_group = predictions_A$response,
   stringsAsFactors = FALSE
 )
-write.csv(submission_method_A, "result/submission_method_A_direct.csv", row.names = FALSE)
+write.csv(submission_method_A, "result/submission_method_A_scheme.csv", row.names = FALSE)
 message("Method A submission file created.")
+
+# --- MODEL B: Stacking with Multinom Super Learner ---
+message("Defining Model B with Multinom super learner...")
+# Multinom is a linear model, providing diversity to the tree-based Ranger
+lrn_super_multinom <- lrn("classif.multinom", predict_type = "prob", MaxNWts = 5000)
+
+stacked_learner_B <- as_learner(
+  ppl("stacking",
+      base_learners = base_learners, # Re-using the same base learners
+      super_learner = lrn_super_multinom,
+      method = "cv", folds = 5, use_features = TRUE
+  ), id = "stack_multinom_super"
+)
+
+message("Training Model B...")
+stacked_learner_B$train(task)
+message("Predicting with Model B...")
+predictions_B <- stacked_learner_B$predict_newdata(newdata = test_imp)
+saveRDS(predictions_B, file = "result/predictions_B_multinom_scheme.rds")
+saveRDS(stacked_learner_B, file = "result/model_B_stack_multinom_scheme.rds")
+message("Model B (Multinom Super Learner) predictions saved.")
 
 # --- Method B: Direct result from the best single model (assuming Model A) ---
 message("Generating submission for Method B (direct result from Multinom super learner)...")
@@ -193,7 +188,7 @@ submission_method_B <- data.frame(
   status_group = predictions_B$response,
   stringsAsFactors = FALSE
 )
-write.csv(submission_method_B, "result/submission_method_B_direct.csv", row.names = FALSE)
+write.csv(submission_method_B, "result/submission_method_B_scheme.csv", row.names = FALSE)
 message("Method B submission file created.")
 
 
@@ -212,7 +207,7 @@ submission_method_blended <- data.frame(
   status_group = final_blended_response,
   stringsAsFactors = FALSE
 )
-write.csv(submission_method_blended, "result/submission_method_blended.csv", row.names = FALSE)
+write.csv(submission_method_blended, "result/submission_blended_scheme.csv", row.names = FALSE)
 message("Method (blended) submission file created.")
 message("All processes finished successfully.")
 
