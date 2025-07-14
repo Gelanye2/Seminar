@@ -8,7 +8,7 @@ library(future)
 library(mlr3tuning) 
 library(mlr3mbo)
 library(data.table)
-library(scoring)
+library(MLmetrics)
 library(purrr)
 library(rgenoud)
 library(DiceKriging)
@@ -237,7 +237,7 @@ true_matrix <- model.matrix(~ truth_sorted - 1)
 for (i in seq_along(w_values)) {
   w <- w_values[i]
   blended_preds_oof <- w * preds_xgb_oof + (1 - w) * preds_ranger_oof
-  logloss_scores[i] <- score(y = true_matrix, phat = blended_preds_oof)
+  logloss_scores[i] <- MLmetrics::LogLoss(y_pred = blended_preds_oof, y_true = true_matrix)
 }
 best_w <- w_values[which.min(logloss_scores)] 
 message(paste("... optimal weight for XGBoost (w) is:", round(best_w, 3)))
