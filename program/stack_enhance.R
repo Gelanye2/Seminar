@@ -10,6 +10,8 @@ library(mlr3mbo)
 library(data.table)
 library(scoring)
 library(purrr)
+library(rgenoud)
+library(DiceKriging)
 plan(multisession, workers = 20)
 future::plan(future.seed = TRUE)
 set.seed(7832)
@@ -81,14 +83,14 @@ base_pipeline <- po_latlon_na %>>%
 # 1. XGBoost: Uses base pipeline
 lrn_xgb <- as_learner(
   base_pipeline %>>%
-    lrn("classif.xgboost", predict_type = "prob", nthread = 1)
+    po("learner", learner = lrn("classif.xgboost", predict_type = "prob", nthread = 1), id = "learner")
 )
 lrn_xgb$id <- "xgboost.base"
 
 # 2. Ranger: Tree-models are robust to scaling, but we use a minimal pipeline for consistency
 lrn_ranger <- as_learner(
   base_pipeline %>>%
-    lrn("classif.ranger", predict_type = "prob", num.threads = 1)
+    po("learner", learner = lrn("classif.ranger", predict_type = "prob", num.threads = 1), id = "learner")
 )
 lrn_ranger$id <- "ranger.base"
 base_learners <- list(lrn_xgb, lrn_ranger)
@@ -144,17 +146,17 @@ task_for_tuning <- TaskClassif$new(
 message("... defining the hyperparameter search space for teamwork.")
 search_space_stack = ps(
   # XGBoost parameters
-  xgboost.base.max_depth = p_int(lower = 4, upper = 9),
-  xgboost.base.nrounds = p_int(lower = 200, upper = 800),
-  xgboost.base.eta = p_dbl(lower = 0.01, upper = 0.2, logscale = TRUE),
-  xgboost.base.gamma = p_dbl(lower = 0, upper = 5),
-  xgboost.base.lambda = p_dbl(lower = 0.1, upper = 10, logscale = TRUE),
-  xgboost.base.subsample = p_dbl(lower = 0.6, upper = 0.95),
-  xgboost.base.colsample_bytree = p_dbl(lower = 0.4, upper = 0.8),
+  xgboost.base.learner.max_depth = p_int(lower = 4, upper = 9),
+  xgboost.base.learner.nrounds = p_int(lower = 200, upper = 800),
+  xgboost.base.learner.eta = p_dbl(lower = 0.01, upper = 0.2, logscale = TRUE),
+  xgboost.base.learner.gamma = p_dbl(lower = 0, upper = 5),
+  xgboost.base.learner.lambda = p_dbl(lower = 0.1, upper = 10, logscale = TRUE),
+  xgboost.base.learner.subsample = p_dbl(lower = 0.6, upper = 0.95),
+  xgboost.base.learner.colsample_bytree = p_dbl(lower = 0.4, upper = 0.8),
   
   # Ranger parameters
-  ranger.base.mtry = p_int(lower = 2, upper = 10),
-  ranger.base.min.node.size = p_int(lower = 1, upper = 20)
+  ranger.base.learner.mtry = p_int(lower = 2, upper = 10),
+  ranger.base.learner.min.node.size = p_int(lower = 1, upper = 20)
 )
 
 message("STEP 3: Starting holistic tuning on the data subset. This will take a while...")
@@ -197,7 +199,8 @@ message("Model (Multinom Super Learner) predictions saved.")
 
 message("... training final standalone XGBoost model.")
 lrn_xgb_final <- lrn_xgb$clone(deep = TRUE)
-xgb_params <- best_params[grepl("xgboost.base", names(best_params))]
+xgb_params <- best_params[grepl("^xgboost\\.base", names(best_params))]
+names(xgb_params) <- sub("^xgboost\\.base\\.", "", names(xgb_params))
 lrn_xgb_final$param_set$values <- mlr3misc::insert_named(
   lrn_xgb_final$param_set$values,
   xgb_params
@@ -207,7 +210,8 @@ preds_xgb_final <- lrn_xgb_final$predict_newdata(test_imp)
 
 message("... training final standalone Ranger model.")
 lrn_ranger_final <- lrn_ranger$clone(deep = TRUE)
-ranger_params <- best_params[grepl("ranger.base", names(best_params))]
+ranger_params <- best_params[grepl("^ranger\\.base", names(best_params))]
+names(ranger_params) <- sub("^ranger\\.base\\.", "", names(ranger_params))
 lrn_ranger_final$param_set$values <- mlr3misc::insert_named(
   lrn_ranger_final$param_set$values,
   ranger_params
@@ -223,13 +227,12 @@ rr_ranger_final <- resample(task, lrn_ranger_final, cv5, store_models = FALSE)
 
 preds_xgb_oof <- rr_xgb_final$prediction()$prob[order(rr_xgb_final$prediction()$row_id), ]
 preds_ranger_oof <- rr_ranger_final$prediction()$prob[order(rr_ranger_final$prediction()$row_id), ]
-true_labels <- task$truth() # Truth is already ordered
 
 message("... searching for optimal blending weight 'w'.")
 w_values <- seq(0, 1, by = 0.01)
 logloss_scores <- numeric(length(w_values))
-true_matrix <- as.matrix(mlr3misc::get_target_part(task, props = "hot"))[order(rr_xgb_final$prediction()$row_id), ]
-
+truth_sorted <- rr_xgb_final$prediction()$truth[order(rr_xgb_final$prediction()$row_id)]
+true_matrix <- model.matrix(~ truth_sorted - 1)
 
 for (i in seq_along(w_values)) {
   w <- w_values[i]
