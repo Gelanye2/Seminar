@@ -12,7 +12,7 @@ library(MLmetrics)
 library(purrr)
 library(rgenoud)
 library(DiceKriging)
-plan(multisession, workers = 20)
+plan(multisession, workers = 8)
 future::plan(future.seed = TRUE)
 set.seed(7832)
 
@@ -83,14 +83,14 @@ base_pipeline <- po_latlon_na %>>%
 # 1. XGBoost: Uses base pipeline
 lrn_xgb <- as_learner(
   base_pipeline %>>%
-    po("learner", learner = lrn("classif.xgboost", predict_type = "prob", nthread = 1), id = "learner")
+    po("learner", learner = lrn("classif.xgboost", predict_type = "prob", nthread = 4), id = "learner")
 )
 lrn_xgb$id <- "xgboost.base"
 
 # 2. Ranger: Tree-models are robust to scaling, but we use a minimal pipeline for consistency
 lrn_ranger <- as_learner(
   base_pipeline %>>%
-    po("learner", learner = lrn("classif.ranger", predict_type = "prob", num.threads = 1), id = "learner")
+    po("learner", learner = lrn("classif.ranger", predict_type = "prob", num.threads = 4), id = "learner")
 )
 lrn_ranger$id <- "ranger.base"
 base_learners <- list(lrn_xgb, lrn_ranger)
