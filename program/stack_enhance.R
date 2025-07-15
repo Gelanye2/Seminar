@@ -1,18 +1,19 @@
 # 0. SETUP AND DATA LOADING
 # ==================================
 # Ensure required packages are loaded
+.libPaths("/dss/dsshome1/01/ra59qow2/R/x86_64-pc-linux-gnu-library/4.3")
 library(mlr3pipelines)
 library(mlr3learners)
 library(dplyr)
 library(future)
-library(mlr3tuning) 
+library(mlr3tuning)
 library(mlr3mbo)
 library(data.table)
 library(MLmetrics)
 library(purrr)
 library(rgenoud)
 library(DiceKriging)
-plan(multisession, workers = 8)
+plan(multisession, workers = 16)
 future::plan(future.seed = TRUE)
 set.seed(7832)
 
@@ -83,14 +84,14 @@ base_pipeline <- po_latlon_na %>>%
 # 1. XGBoost: Uses base pipeline
 lrn_xgb <- as_learner(
   base_pipeline %>>%
-    po("learner", learner = lrn("classif.xgboost", predict_type = "prob", nthread = 4), id = "learner")
+    po("learner", learner = lrn("classif.xgboost", predict_type = "prob", nthread = 7), id = "learner")
 )
 lrn_xgb$id <- "xgboost.base"
 
 # 2. Ranger: Tree-models are robust to scaling, but we use a minimal pipeline for consistency
 lrn_ranger <- as_learner(
   base_pipeline %>>%
-    po("learner", learner = lrn("classif.ranger", predict_type = "prob", num.threads = 4), id = "learner")
+    po("learner", learner = lrn("classif.ranger", predict_type = "prob", num.threads = 7), id = "learner")
 )
 lrn_ranger$id <- "ranger.base"
 base_learners <- list(lrn_xgb, lrn_ranger)
@@ -146,17 +147,21 @@ task_for_tuning <- TaskClassif$new(
 message("... defining the hyperparameter search space for teamwork.")
 search_space_stack = ps(
   # XGBoost parameters
-  xgboost.base.learner.max_depth = p_int(lower = 4, upper = 9),
-  xgboost.base.learner.nrounds = p_int(lower = 200, upper = 800),
-  xgboost.base.learner.eta = p_dbl(lower = 0.01, upper = 0.2, logscale = TRUE),
+  xgboost.base.learner.max_depth = p_int(lower = 6, upper = 16),
+  xgboost.base.learner.nrounds = p_int(lower = 300, upper = 800),
+  xgboost.base.learner.eta = p_dbl(lower = 0.01, upper = 0.1, logscale = TRUE),
   xgboost.base.learner.gamma = p_dbl(lower = 0, upper = 5),
-  xgboost.base.learner.lambda = p_dbl(lower = 0.1, upper = 10, logscale = TRUE),
-  xgboost.base.learner.subsample = p_dbl(lower = 0.6, upper = 0.95),
-  xgboost.base.learner.colsample_bytree = p_dbl(lower = 0.4, upper = 0.8),
-  
+  xgboost.base.learner.lambda = p_dbl(lower = 1, upper = 5, logscale = TRUE),
+  xgboost.base.learner.subsample = p_dbl(lower = 0.7, upper = 1),
+  xgboost.base.learner.colsample_bytree = p_dbl(lower = 0.7, upper = 1),
+
   # Ranger parameters
-  ranger.base.learner.mtry = p_int(lower = 2, upper = 10),
-  ranger.base.learner.min.node.size = p_int(lower = 1, upper = 20)
+  ranger.base.learner.num.trees     = p_int(700, 900),
+  ranger.base.learner.mtry          = p_int(3, 5),
+  ranger.base.learner.max.depth     = p_int(65, 85),
+  ranger.base.learner.min.node.size = p_int(2, 6),
+  ranger.base.learner.sample.fraction = p_dbl(0.95, 1.0)
+
 )
 
 message("STEP 3: Starting holistic tuning on the data subset. This will take a while...")
@@ -167,7 +172,7 @@ at_fast = AutoTuner$new(
   resampling = rsmp("cv", folds = 3),      # Outer 3-fold CV for robust performance estimate
   measure = msr("classif.logloss"),
   search_space = search_space_stack,
-  terminator = trm("evals", n_evals = 50), # Try 50 different hyperparameter sets
+  terminator = trm("evals", n_evals = 90), # Try 100 different hyperparameter sets
   tuner = tnr("mbo")             # Random search is fast and effective
 )
 
@@ -175,14 +180,14 @@ at_fast = AutoTuner$new(
 at_fast$train(task_for_tuning)
 
 message("Tuning complete.")
-print("Best found hyperparameters and performance:")
-print(at_fast$tuning_result)
-saveRDS(at_fast$tuning_result, file = "result/tuning_result_stacking.rds")
+best_params <- at_fast$learner$param_set$values
+saveRDS(best_params, file = "result/stacking_bestparams.rds")
+saveRDS(at_fast$learner, file = "result/stacking_model.rds")
+saveRDS(at_fast$archive, file = "result/stacking_archive.rds")
 
 message("STEP 4: Training the final model on the FULL dataset using the best found hyperparameters...")
 
 # --- Step 4: Extract best parameters and set them on the original learner ---
-best_params <- at_fast$tuning_result$learner_param_vals
 
 message("... training final Stacking model.")
 stacked_learner_final <- stacked_learner$clone(deep = TRUE)
@@ -222,8 +227,8 @@ preds_ranger_final <- lrn_ranger_final$predict_newdata(test_imp)
 # --- BLENDING: FIND WEIGHTS & PREDICT ----
 message("Executing Blending...")
 cv5 <- rsmp("cv", folds = 5)
-rr_xgb_final <- resample(task, lrn_xgb_final, cv5, store_models = FALSE)
-rr_ranger_final <- resample(task, lrn_ranger_final, cv5, store_models = FALSE)
+rr_xgb_final <- resample(task, lrn_xgb_final, cv5, store_models = TRUE)
+rr_ranger_final <- resample(task, lrn_ranger_final, cv5, store_models = TRUE)
 
 preds_xgb_oof <- rr_xgb_final$prediction()$prob[order(rr_xgb_final$prediction()$row_ids), ]
 preds_ranger_oof <- rr_ranger_final$prediction()$prob[order(rr_ranger_final$prediction()$row_ids), ]
@@ -239,7 +244,7 @@ for (i in seq_along(w_values)) {
   blended_preds_oof <- w * preds_xgb_oof + (1 - w) * preds_ranger_oof
   logloss_scores[i] <- MLmetrics::LogLoss(y_pred = blended_preds_oof, y_true = true_matrix)
 }
-best_w <- w_values[which.min(logloss_scores)] 
+best_w <- w_values[which.min(logloss_scores)]
 message(paste("... optimal weight for XGBoost (w) is:", round(best_w, 3)))
 
 # --- Apply best weight to test set predictions ---
