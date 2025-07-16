@@ -1072,4 +1072,9 @@ saveRDS(all_artifacts, file = artifact_filename)
 print("Process finished successfully. Submission and artifacts saved.")
 
 
+imputed_enhanced <- readRDS("data/data_imputed_enhanced.rds")
+imputed_scheme <- readRDS("data/data_imputed_scheme.rds")
+imputed_sh <- copy(imputed_enhanced)
+imputed_sh$scheme_name <- imputed_scheme$scheme_name
+write.csv(imputed_sh, "data/imputed_sh.rds", row.names = FALSE)
 

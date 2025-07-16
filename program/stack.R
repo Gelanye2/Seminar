@@ -8,15 +8,15 @@ library(future)
 library(mlr3tuning) 
 library(mlr3mbo)
 library(data.table)
-plan(multisession, workers = 16)
+plan(multisession, workers = 13)
 future::plan(future.seed = TRUE)
 set.seed(7832)
 
 # fi_clean <- readRDS("data/fi_clean.rds") # no imp and all
-imputed <- readRDS("data/data_imputed_enhanced.rds")
+imputed <- readRDS("seminar/data/data_imputed_enhanced.rds")
 #sub_imputed <- readRDS("data/sub_imputed.rds") # train + test without longtitude and latitude
-# test_full_imp <- readRDS("data/test_full_imp.rds")
-test_all <- readRDS("data/test_all.rds")
+# test_full_imp <- readRDS("seminar/data/test_full_imp.rds")
+test_all <- readRDS("seminar/data/test_all.rds")
 log_params <- data.table(
   nrounds          = 385L,
   eta_log        = 0.02869972,
@@ -106,17 +106,11 @@ lrn_xgb <- as_learner(
   base_pipeline %>>%
     lrn("classif.xgboost",
         predict_type = "prob",
-        nrounds = param.set$nrounds,
-        eta = param.set$eta,
-        max_depth = param.set$max_depth,
-        subsample = param.set$subsample,
-        colsample_bytree = param.set$colsample_bytree,
-        alpha = param.set$alpha,
-        lambda = param.set$lambda,
-        gamma = param.set$gamma,
-        min_child_weight = param.set$min_child_weight,
+        nrounds = 480,
+        eta = 0.047,
+        max_depth = 8,
         eval_metric = "mlogloss",
-        nthread = 16
+        nthread = 3
     )
 )
 lrn_xgb$id <- "xgboost.base"
@@ -125,51 +119,13 @@ lrn_ranger <- as_learner(
   base_pipeline %>>%
     lrn("classif.ranger",
         predict_type = "prob",
-        num.trees = 873,
-        mtry = 4, 
+        mtry = 3, 
         min.node.size = 5,
-        max.depth = 85,
-        num.threads = 16
+        num.threads = 3
     )
 )
 lrn_ranger$id <- "ranger.base"
 base_learners <- list(lrn_xgb, lrn_ranger)
-
-# --- TRAIN & PREDICT: STANDALONE MODELS (XGBoost & Ranger) ----
-message("Training standalone XGBoost model...")
-lrn_xgb$train(task)
-preds_xgb_test <- lrn_xgb$predict_newdata(test_imp)
-
-message("Training standalone Ranger model...")
-lrn_ranger$train(task)
-preds_ranger_test <- lrn_ranger$predict_newdata(test_imp)
-
-# --- BLENDING: FIND WEIGHTS & PREDICT ----
-message("Executing Blending...")
-cv5 <- rsmp("cv", folds = 5)
-rr_xgb <- resample(task, lrn_xgb, cv5, store_models = FALSE)
-rr_ranger <- resample(task, lrn_ranger, cv5, store_models = FALSE)
-
-preds_xgb_oof <- rr_xgb$prediction()$prob[order(rr_xgb$prediction()$row_id), ]
-preds_ranger_oof <- rr_ranger$prediction()$prob[order(rr_ranger$prediction()$row_id), ]
-true_labels <- task$truth()
-
-message("... searching for optimal blending weight 'w'.")
-w_values <- seq(0, 1, by = 0.01)
-logloss_scores <- numeric(length(w_values))
-
-for (i in seq_along(w_values)) {
-  w <- w_values[i]
-  blended_preds_oof <- w * preds_xgb_oof + (1 - w) * preds_ranger_oof
-  logloss_scores[i] <- logloss(truth = true_labels, prob = blended_preds_oof)
-}
-
-best_w <- w_values[which.min(logloss_scores)]
-message(paste("... optimal weight for XGBoost (w) is:", round(best_w, 3)))
-
-# --- 4.3. Apply best weight to test set predictions ---
-blended_preds_test_prob <- best_w * preds_xgb_test$prob + (1 - best_w) * preds_ranger_test$prob
-blended_response <- colnames(blended_preds_test_prob)[apply(blended_preds_test_prob, 1, which.max)]
 
 # --- MODEL : Stacking with Multinom Super Learner ---
 message("Defining Model with Multinom super learner...")
@@ -188,9 +144,47 @@ message("Training Model Multinom...")
 stacked_learner_M$train(task)
 message("Predicting with Model Multinom...")
 predictions_M <- stacked_learner_M$predict_newdata(newdata = test_imp)
-saveRDS(predictions_M, file = "result/predictions_multinom_enhance.rds")
-saveRDS(stacked_learner_M, file = "result/stack_multinom_enhance.rds")
+saveRDS(predictions_M, file = "seminar/result/predictions_multinom_enhance.rds")
+saveRDS(stacked_learner_M, file = "seminar/result/stack_multinom_enhance.rds")
 message("Model (Multinom Super Learner) predictions saved.")
+
+submission_stack <- data.frame(
+  id           = test_all$id,
+  status_group = predictions_M$response,
+  stringsAsFactors = FALSE
+)
+write.csv(submission_stack, "seminar/result/submission_stack.csv", row.names = FALSE)
+message("Method M submission file created.")
+
+# --- TRAIN & PREDICT: STANDALONE MODELS (XGBoost & Ranger) ----
+message("Training base learners via resampling to get OOF predictions...")
+cv5 <- rsmp("cv", folds = 5)
+rr_xgb <- resample(task, lrn_xgb, cv5, store_models = FALSE)
+rr_ranger <- resample(task, lrn_ranger, cv5, store_models = FALSE)
+
+preds_xgb_oof <- rr_xgb$prediction()$prob[order(rr_xgb$prediction()$row_ids), ]
+preds_ranger_oof <- rr_ranger$prediction()$prob[order(rr_ranger$prediction()$row_ids), ]
+true_labels <- task$truth()
+
+message("Training base learners on FULL data to get test predictions...")
+lrn_xgb$train(task)
+preds_xgb_test <- lrn_xgb$predict_newdata(test_imp)
+
+lrn_ranger$train(task)
+preds_ranger_test <- lrn_ranger$predict_newdata(test_imp)
+
+# --- BLENDING: FIND WEIGHTS & PREDICT ----
+message("Finding optimal blending weight...")
+w_values <- seq(0, 1, by = 0.01)
+logloss_scores <- map_dbl(w_values, function(w) {
+  blended_preds_oof <- w * preds_xgb_oof + (1 - w) * preds_ranger_oof
+  logloss(truth = true_labels, prob = blended_preds_oof)
+})
+best_w <- w_values[which.min(logloss_scores)]
+message(paste("... optimal weight for XGBoost (w) is:", round(best_w, 3)))
+
+blended_preds_test_prob <- best_w * preds_xgb_test$prob + (1 - best_w) * preds_ranger_test$prob
+blended_response <- colnames(blended_preds_test_prob)[apply(blended_preds_test_prob, 1, which.max)]
 
 # --- Generate Submission File from Stacking Model ---
 message("Generating submission from the stacking model (Multinom super learner)...")
@@ -199,25 +193,18 @@ submission_xgb <- data.frame(
   status_group = preds_xgb_test$response,
   stringsAsFactors = FALSE
 )
-write.csv(submission_xgb, "result/submission_xgb.csv", row.names = FALSE)
+write.csv(submission_xgb, "seminar/result/submission_xgb.csv", row.names = FALSE)
 submission_ranger <- data.frame(
   id           = test_all$id,
   status_group = preds_ranger_test$response,
   stringsAsFactors = FALSE
 )
-write.csv(submission_ranger, "result/submission_ranger.csv", row.names = FALSE)
+write.csv(submission_ranger, "seminar/result/submission_ranger.csv", row.names = FALSE)
 submission_blend <- data.frame(
   id           = test_all$id,
   status_group = blended_response,
   stringsAsFactors = FALSE
 )
-write.csv(submission_blend, "result/submission_blend.csv", row.names = FALSE)
-submission_stack <- data.frame(
-  id           = test_all$id,
-  status_group = predictions_M$response,
-  stringsAsFactors = FALSE
-)
-write.csv(submission_stack, "result/submission_stack.csv", row.names = FALSE)
-message("Method M submission file created.")
+write.csv(submission_blend, "seminar/result/submission_blend.csv", row.names = FALSE)
 message("All 4 submission files (xgb, ranger, blending, stacking) created successfully in 'result/' folder.")
 

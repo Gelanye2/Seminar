@@ -111,12 +111,9 @@ stacked_learner <- as_learner(
 message("STEP 2: Setting up for faster tuning using STRATIFIED SAMPLING...")
 
 # --- Step 1: Create a data subset via Stratified Sampling ---
-# We stratify by the target variable 'status_group' to maintain class proportions.
-# This ensures the subset is highly representative of the full dataset.
 message("... creating a 15,000-row stratified subset from the training data.")
 
-# Set the proportion of data to sample (15,000 / 59,400 ≈ 0.2525)
-# Or simply define the number of samples per group
+# 15,000 / 59,400 ≈ 0.2525
 n_samples_per_group <- round(table(train_imp$status_group) * 0.25)
 
 # A more robust dplyr way to do stratified sampling
@@ -222,8 +219,8 @@ preds_ranger_final <- lrn_ranger_final$predict_newdata(test_imp)
 # --- BLENDING: FIND WEIGHTS & PREDICT ----
 message("Executing Blending...")
 cv5 <- rsmp("cv", folds = 5)
-rr_xgb_final <- resample(task, lrn_xgb_final, cv5, store_models = FALSE)
-rr_ranger_final <- resample(task, lrn_ranger_final, cv5, store_models = FALSE)
+rr_xgb_final <- resample(task, lrn_xgb_final, cv5, store_models = TRUE)
+rr_ranger_final <- resample(task, lrn_ranger_final, cv5, store_models = TRUE)
 
 preds_xgb_oof <- rr_xgb_final$prediction()$prob[order(rr_xgb_final$prediction()$row_ids), ]
 preds_ranger_oof <- rr_ranger_final$prediction()$prob[order(rr_ranger_final$prediction()$row_ids), ]

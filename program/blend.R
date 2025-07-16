@@ -147,8 +147,8 @@ preds_ranger_test <- lrn_ranger$predict_newdata(test_imp)
 # --- BLENDING: FIND WEIGHTS & PREDICT ----
 message("Executing Blending...")
 cv5 <- rsmp("cv", folds = 5)
-rr_xgb <- resample(task, lrn_xgb, cv5, store_models = FALSE)
-rr_ranger <- resample(task, lrn_ranger, cv5, store_models = FALSE)
+rr_xgb <- resample(task, lrn_xgb, cv5, store_models = TRUE)
+rr_ranger <- resample(task, lrn_ranger, cv5, store_models = TRUE)
 
 preds_xgb_oof <- rr_xgb$prediction()$prob[order(rr_xgb$prediction()$row_id), ]
 preds_ranger_oof <- rr_ranger$prediction()$prob[order(rr_ranger$prediction()$row_id), ]
