@@ -113,16 +113,13 @@ ranger_tuned$id <- "ranger.tuned"
 lightgbm_base <- as_learner(
   po("encode") %>>% lrn("classif.lightgbm"), predict_type = "prob")
 
-catboost_base <- as_learner(
-  po("encode") %>>% lrn("classif.catboost"), predict_type = "prob")
-
 kknn_base <- as_learner(
   po("encode", method = "treatment") %>>%
     po("scale") %>>%
   lrn("classif.kknn"), predict_type = "prob")
 
 base_learners <- list(xgb_base, xgb_tuned, ranger_base, ranger_tuned, 
-                      lightgbm_base, catboost_base, kknn_base)
+                      lightgbm_base, kknn_base)
 
 # --- MODEL : Stacking with Multinom Super Learner ---
 message("Defining Model with Multinom super learner...")
