@@ -78,10 +78,7 @@ po_char2fac <- po("colapply", id = "char2factor",
                     affect_columns = selector_type("character")
                   ))
 
-graph <- po_latlon_na %>>%
-  po_latlon_flag %>>%
-  po_latlon_impute %>>%
-  po_char2fac %>>%
+graph <- po_char2fac %>>%
   po("removeconstants") %>>%
   po("encode", method = "treatment") %>>%
   lrn("classif.xgboost",
@@ -132,5 +129,3 @@ top10_params <- top10[, archive$search_space$ids(), with = FALSE]
 saveRDS(top10_params, "result/top10_xgb_params.rds")
 
 print(top10_params)
-
-

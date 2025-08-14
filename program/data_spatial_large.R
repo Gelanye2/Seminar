@@ -1,9 +1,9 @@
 data_enhanced <- readRDS("data/data_all_spatial0.RDS") %>%
   select(-population_500, -location_cluster, -year_recorded, -dataset) %>%
-  mutate(location_cluster2 = as.factor(location_cluster2)) %>%
   mutate(population_1k = ifelse(is.na(population_1k), -999, population_1k),
                                                                   location_cluster2 = ifelse(is.na(location_cluster2), -999, location_cluster2),
-                                                                  neighbor_count_1km = ifelse(is.na(neighbor_count_1km), -999, neighbor_count_1km))
+                                                                  neighbor_count_1km = ifelse(is.na(neighbor_count_1km), -999, neighbor_count_1km)) %>%
+  mutate(location_cluster2 = as.factor(location_cluster2))
 
 train_data_sp <- data_enhanced %>% filter(!is.na(status_group))
 test_data_sp  <- data_enhanced %>% filter(is.na(status_group))

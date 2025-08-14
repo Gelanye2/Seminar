@@ -1,4 +1,4 @@
-# .libPaths("/dss/dsshome1/01/ra59qow2/R/x86_64-pc-linux-gnu-library/4.3")
+.libPaths("/dss/dsshome1/01/ra59qow2/R/x86_64-pc-linux-gnu-library/4.3")
 # 0. SETUP AND DATA LOADING
 # ==================================
 # Ensure required packages are loaded
@@ -9,9 +9,8 @@ library(mlr3pipelines)
 library(future)
 library(data.table)
 library(dplyr)
-library(mlr3filters)
 
-plan(multisession, workers = 32)
+plan(multisession, workers = 16)
 future::plan(future.seed = TRUE)
 set.seed(7832)
 
@@ -98,27 +97,75 @@ xgb_tuned <- as_learner(
 xgb_tuned$id <- "xgboost.tuned"
 # 2. Ranger: Tree-models are robust to scaling, but we use a minimal pipeline for consistency
 ranger_tuned <- as_learner(
-    lrn("classif.ranger",
-        predict_type = "prob",
-        num.trees = 1311,
-        mtry = 4,
-        min.node.size = 7,
-        max.depth = 48,
-        num.threads = 7
-    )
+  lrn("classif.ranger",
+      predict_type = "prob",
+      num.trees = 1311,
+      mtry = 4,
+      min.node.size = 7,
+      max.depth = 48,
+      num.threads = 7
+  )
 )
 ranger_tuned$id <- "ranger.tuned"
 
+catboost_base <- as_learner(lrn("classif.catboost",
+                                predict_type = "prob",
+                                thread_count = 7))
+catboost_base$id <- "catboost.base"
+
+
 lightgbm_base <- as_learner(
-  po("encode") %>>% lrn("classif.lightgbm"), predict_type = "prob")
+  po("encode") %>>% lrn("classif.lightgbm",
+                        predict_type = "prob",
+                        num_iterations  = 1000L,
+                        learning_rate = 0.1,
+                        num_leaves = 31,
+                        feature_fraction = 0.8,
+                        bagging_fraction = 0.8,
+                        bagging_freq = 1,
+                        num_threads = 1
+  )
+)
+lightgbm_base$id <- "lightgbm.base"
 
 kknn_base <- as_learner(
   po("encode", method = "treatment") %>>%
     po("scale") %>>%
-  lrn("classif.kknn"), predict_type = "prob")
+    lrn("classif.kknn",
+        predict_type = "prob",
+        k = 21,
+        kernel = "rectangular"
+    )
+)
+kknn_base$id <- "kknn.base"
+
+glmnet_base <- as_learner(
+  po("encode", method = "treatment") %>>%
+    po("scale") %>>%
+    lrn("classif.glmnet",
+        predict_type = "prob",
+        alpha = 1,
+        s = 0.01
+    )
+)
+glmnet_base$id <- "glmnet.lasso"
+
+catboost_tuned <- lrn("classif.catboost",
+    predict_type = "prob",
+    thread_count = 7,
+    learning_rate = 0.11548602,
+    depth = 10,
+    l2_leaf_reg = 4.021390,
+    rsm = 0.8162192,
+    random_strength = 16.579515,
+    bagging_temperature = 0.3254960,
+    iterations = 784)
+catboost_tuned$id <- "catboost.tuned"
+
 
 base_learners <- list(xgb_base, xgb_tuned, ranger_base, ranger_tuned,
-                      lightgbm_base, kknn_base)
+                      lightgbm_base, kknn_base, catboost_base, catboost_tuned)
+
 
 # --- MODEL : Stacking with Multinom Super Learner ---
 message("Defining Model with Multinom super learner...")
@@ -158,16 +205,6 @@ result_stacking <- data.frame(
   status_group = final_predictions$response,
   stringsAsFactors = FALSE
 )
-write.csv(result_stacking, "result/submission_stacking_multinom.csv", row.names = FALSE)
+write.csv(result_stacking, "result/submission_stacking_multinom8.csv", row.names = FALSE)
 print("Submission file 'submission_stacking_multinom.csv' has been generated.")
-saveRDS(final_learner, "result/model_stacking_multinom.rds")
-
-##PFI
-filter = flt("permutation",
-             learner = final_learner,
-             nmc = 5,
-             measure = msr("classif.acc"),
-             standardize = FALSE
-)
-pfi_result <- as.data.table(filter$calculate(task))
-saveRDS(pfi_result, "result/pfi_stacking_multinom.rds")
+saveRDS(final_learner, "result/model_stacking_multinom8.rds")

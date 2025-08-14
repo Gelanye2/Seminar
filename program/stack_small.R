@@ -1,133 +1,161 @@
+.libPaths("/dss/dsshome1/01/ra59qow2/R/x86_64-pc-linux-gnu-library/4.3")
 # 0. SETUP AND DATA LOADING
 # ==================================
 # Ensure required packages are loaded
 library(mlr3)
-library(mlr3pipelines)
 library(mlr3learners)
-library(dplyr)
+library(mlr3extralearners)
+library(mlr3pipelines)
 library(future)
-library(mlr3tuning)
-library(mlr3mbo)
 library(data.table)
-library(MLmetrics)
-library(purrr)
-library(paradox)
-library(rgenoud)
-library(DiceKriging)
+library(dplyr)
 
-# Setup parallel processing and seed
-plan(sequential)
+plan(multisession, workers = 16)
+future::plan(future.seed = TRUE)
 set.seed(7832)
 
-# Load data (ensure paths are correct)
-imputed <- readRDS("data/data_imputed_scheme.rds")
+# fi_clean <- readRDS("data/fi_clean.rds") # no imp and all
+imputed <- readRDS("data/data_imputed_enhanced.rds")
+test_all <- readRDS("data/test_all.rds")
 
 # 1. TASK DEFINITION
-# ==================================
 # Use the imputed dataset for consistency
 train_imp <- imputed %>% filter(!is.na(status_group))
+test_imp  <- imputed %>% filter(is.na(status_group))
 
 # Ensure target is a factor for classification
 train_imp$status_group <- as.factor(train_imp$status_group)
 
-message("STEP 1: Defining tasks, pipelines, and learner structures...")
-# Create the training task on the FULL dataset
+log_params <- data.table(
+  nrounds          = 482L,
+  eta_log        = -3.007022,
+  alpha_log      = -3.815309,
+  lambda_log     =  0.2757714,
+  colsample_bytree = 0.7244709,
+  gamma            = 0.09409377,
+  max_depth        = 13L,
+  min_child_weight = 1.109858,
+  subsample        = 0.8931599
+)
+
+param.set <- copy(log_params)[, `:=`(
+  eta    = exp(eta_log),
+  alpha  = exp(alpha_log),
+  lambda = exp(lambda_log)
+)][, c("eta_log", "alpha_log", "lambda_log") := NULL]
+
+# Create the training task
 task <- TaskClassif$new(
   id      = "waterpoints_stacking",
   backend = train_imp,
   target  = "status_group"
 )
 
-# 2. DEFINE BASE LEARNERS AND PIPELINE
-# ==================================
-# --- Preprocessing Pipeline (remains unchanged) ---
-po_char2fac <- po("colapply", id = "char2factor",
-                  param_vals = list(
-                    applicator     = as.factor,
-                    affect_columns = selector_type("character")
-                  ))
-base_pipeline <- po_char2fac %>>%
-  po("removeconstants") %>>%
-  po("encode", param_vals = list(method = "treatment"))
-
 # --- Create Learner Instances ---
-lrn_xgb <- as_learner(
-  base_pipeline %>>%
-    po("learner", learner = lrn("classif.xgboost", predict_type = "prob", nthread = 20), id = "learner")
+# 1. XGBoost: Uses base pipeline
+xgb_base <- as_learner(
+  po("encode", method = "treatment") %>>%
+    lrn("classif.xgboost",
+        predict_type = "prob",
+        nrounds = 1000L,
+        eta = 0.1,
+        max_depth = 6,
+        subsample = 0.8,
+        colsample_bytree = 0.8,
+        nthread = 7
+    )
 )
-lrn_xgb$id <- "xgboost.base"
-
-lrn_ranger <- as_learner(
-  base_pipeline %>>%
-    po("learner", learner = lrn("classif.ranger", predict_type = "prob", num.threads = 20), id = "learner")
+xgb_base$id <- "xgboost.base"
+# 2. Ranger: Tree-models are robust to scaling, but we use a minimal pipeline for consistency
+ranger_base <- as_learner(
+  lrn("classif.ranger",
+      predict_type = "prob",
+      num.trees = 500,
+      mtry = floor(sqrt(ncol(train_imp) - 1)), # ncol-1 for target
+      min.node.size = 1,
+      num.threads = 7
+  )
 )
-lrn_ranger$id <- "ranger.base"
-base_learners <- list(lrn_xgb, lrn_ranger)
+ranger_base$id <- "ranger.base"
 
-# --- Define Stacking Model ---
+xgb_tuned <- as_learner(
+  po("encode", method = "treatment") %>>%
+    lrn("classif.xgboost",
+        predict_type = "prob",
+        nrounds = param.set$nrounds,
+        eta = param.set$eta,
+        max_depth = param.set$max_depth,
+        subsample = param.set$subsample,
+        colsample_bytree = param.set$colsample_bytree,
+        alpha = param.set$alpha,
+        lambda = param.set$lambda,
+        gamma = param.set$gamma,
+        min_child_weight = param.set$min_child_weight,
+        nthread = 7
+    )
+)
+xgb_tuned$id <- "xgboost.tuned"
+# 2. Ranger: Tree-models are robust to scaling, but we use a minimal pipeline for consistency
+ranger_tuned <- as_learner(
+  lrn("classif.ranger",
+      predict_type = "prob",
+      num.trees = 1311,
+      mtry = 4,
+      min.node.size = 7,
+      max.depth = 48,
+      num.threads = 7
+  )
+)
+ranger_tuned$id <- "ranger.tuned"
+
+lightgbm_base <- as_learner(
+  po("encode") %>>% lrn("classif.lightgbm"), predict_type = "prob")
+
+kknn_base <- as_learner(
+  po("encode", method = "treatment") %>>%
+    po("scale") %>>%
+    lrn("classif.kknn"), predict_type = "prob")
+
+base_learners <- list(xgb_base, ranger_base,
+                      kknn_base)
+
+# --- MODEL : Stacking with Multinom Super Learner ---
 message("Defining Model with Multinom super learner...")
-lrn_super_multinom <- lrn("classif.multinom", predict_type = "prob", MaxNWts = 5000)
-stacked_learner <- as_learner(
+# Multinom is a linear model, providing diversity to the tree-based Ranger
+super_multinom <- lrn("classif.multinom", predict_type = "prob", MaxNWts = 5000)
+
+# 2. Create the final stacking learner directly
+final_learner <- as_learner(
   ppl("stacking",
       base_learners = base_learners,
-      super_learner = lrn_super_multinom,
-      method = "cv", folds = 5, use_features = FALSE
-  ), id = "stack_multinom"
+      super_learner = super_multinom,
+      method = "cv",
+      folds = 5,
+      use_features = FALSE
+  ),
+  id = "stack_multinom"
 )
 
-# 3. TUNE ON A SUBSET
-# ==================================
-message("STEP 2: Setting up for faster tuning using STRATIFIED SAMPLING...")
-# Create a stratified subset for tuning
-n_samples_per_group <- round(table(train_imp$status_group) * 0.25)
-set.seed(7832)
-train_imp_subset <- train_imp %>%
-  group_by(status_group) %>%
-  group_split() %>%
-  map_dfr(function(df_group) {
-    group_name <- df_group$status_group[1]
-    n_to_sample <- n_samples_per_group[as.character(group_name)]
-    slice_sample(df_group, n = n_to_sample, replace = FALSE)
-  })
-task_for_tuning <- TaskClassif$new(
-  id      = "waterpoints_tuning_stratified",
-  backend = train_imp_subset,
+# 3. Train the final model on the full training data
+print(paste("Training final model:", final_learner$id))
+final_learner$train(task) # 'task' is your full training TaskClassif
+print("Final model training complete.")
+
+# 4. Predict on the test set
+print("Predicting on the test set...")
+task_test <- TaskClassif$new(
+  id      = "waterpoints_test",
+  backend = test_imp,
   target  = "status_group"
 )
+final_predictions <- final_learner$predict(task_test)
+print("Prediction complete.")
 
-# Define a small search space
-search_space_stack <- ps(
-  # XGBoost parameters
-  xgboost.base.learner.max_depth = p_int(lower = 4, upper = 7),
-  xgboost.base.learner.nrounds = p_int(lower = 900, upper = 1100),
-  xgboost.base.learner.eta = p_dbl(lower = 0.01, upper = 0.05, logscale = TRUE),
-  xgboost.base.learner.gamma = p_dbl(lower = 0, upper = 5),
-  xgboost.base.learner.lambda = p_dbl(lower = 1, upper = 3, logscale = TRUE),
-  xgboost.base.learner.subsample = p_dbl(lower = 0.7, upper = 0.8),
-  xgboost.base.learner.colsample_bytree = p_dbl(lower = 0.7, upper = 0.8),
-  
-  # Ranger parameters
-  ranger.base.learner.mtry = p_int(lower = 53, upper = 60),
-  ranger.base.learner.min.node.size = p_int(lower = 3, upper = 5)
+# 5. Generate the submission file
+result_stacking <- data.frame(
+  id           = test_all$id,
+  status_group = final_predictions$response,
+  stringsAsFactors = FALSE
 )
-
-message("STEP 3: Starting holistic tuning on the data subset...")
-# Configure and run the AutoTuner
-at_small <- AutoTuner$new(
-  learner = stacked_learner,
-  resampling = rsmp("cv", folds = 3),
-  measure = msr("classif.acc"),
-  search_space = search_space_stack,
-  terminator = trm("evals", n_evals = 15),
-  tuner = tnr("random_search"),
-  store_models = TRUE
-)
-at_small$train(task_for_tuning)
-
-message("Tuning complete.")
-tuning_archive_dt <- as.data.table(at_small$archive)
-sorted_tuning_archive <- tuning_archive_dt %>%
-  arrange(desc(classif.acc))
-print(head(sorted_tuning_archive))
-write.csv(sorted_tuning_archive, "result/full_archive_sorted_by_acc.csv", row.names = FALSE)
-saveRDS(at_small, "result/autotuner_final_object.rds")
+write.csv(result_stacking, "result/submission_stacking_multinom.csv2", row.names = FALSE)
+print("Submission file 'submission_stacking_multinom.csv' has been generated.")
