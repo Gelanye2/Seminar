@@ -1,4 +1,6 @@
 library(data.table)
+
+#read the archive during the process
 auto <- readRDS("result/xgb_tuning_model_l.rds")
 archive <- readRDS("result/xgb_tuning_archive_l.rds")
 

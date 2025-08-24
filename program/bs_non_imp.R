@@ -18,8 +18,19 @@ po_char2fac <- po("colapply", id = "char2factor",
                     affect_columns = selector_type("character")
                   ))
 
-non_imputed <- readRDS("data/fi_clean.rds") %>% filter(!is.na(status_group))
+non_imputed <- readRDS("data/fi_clean.rds") %>% filter(!is.na(status_group)) %>% select(-dataset)
 non_imputed_enhanced <- readRDS("data/data_enhanced.rds") %>% filter(!is.na(status_group))
+
+to_factor <- function(df) {
+  df %>%
+    mutate(
+      across(where(is.character), as.factor),
+      across(where(is.logical),   ~factor(.x, levels = c(FALSE, TRUE)))
+    )
+}
+
+non_imputed <- to_factor(non_imputed)
+non_imputed_enhanced <- to_factor(non_imputed_enhanced)
 
 task2 <- list(
   non_imputed = TaskClassif$new(id = "non_imputed", backend = non_imputed, target = "status_group"),
@@ -27,8 +38,8 @@ task2 <- list(
 )
 
 learner2 <- list(
-  po_char2fac %>>%po("encode") %>>% lrn("classif.xgboost", predict_type = "prob",nthread = 7) %>% as_learner(),
-  po_char2fac %>>%po("encode") %>>% lrn("classif.lightgbm", predict_type = "prob",  objective = "multiclass", num_threads = 7) %>% as_learner(),
+  po("encode") %>>% lrn("classif.xgboost", predict_type = "prob",nthread = 7) %>% as_learner(),
+  po("encode") %>>% lrn("classif.lightgbm", predict_type = "prob",  objective = "multiclass", num_threads = 7) %>% as_learner(),
   lrn("classif.catboost",predict_type = "prob",thread_count = 7) %>% as_learner()
 )
 

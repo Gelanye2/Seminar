@@ -1,3 +1,4 @@
+#find data_enhanced
 data_enhanced <- readRDS("data/data_all_spatial0.RDS") %>%
   select(-population_500, -location_cluster, -year_recorded, -dataset) %>%
   mutate(population_1k = ifelse(is.na(population_1k), -999, population_1k),
@@ -5,9 +6,11 @@ data_enhanced <- readRDS("data/data_all_spatial0.RDS") %>%
                                                                   neighbor_count_1km = ifelse(is.na(neighbor_count_1km), -999, neighbor_count_1km)) %>%
   mutate(location_cluster2 = as.factor(location_cluster2))
 
+#filtering
 train_data_sp <- data_enhanced %>% filter(!is.na(status_group))
 test_data_sp  <- data_enhanced %>% filter(is.na(status_group))
 
+#create imputed dataset
 impute_values <- list(
   gps_height     = median(train_data_sp$gps_height, na.rm = TRUE),
   years_in_use   = median(train_data_sp$years_in_use, na.rm = TRUE),

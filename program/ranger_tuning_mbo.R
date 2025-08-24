@@ -39,11 +39,11 @@ glrn <- GraphLearner$new(graph)
 
 # === Suchraum für Tuning ===
 param_set <- ps(
-  classif.ranger.num.trees     = p_int(300, 1500),
-  classif.ranger.mtry          = p_int(lower = 3, upper = floor(sqrt(ncol(train) - 1))),
-  classif.ranger.max.depth     = p_int(5, 100),
-  classif.ranger.min.node.size = p_int(1, 20),
-  classif.ranger.sample.fraction = p_dbl(0.3, 1.0)
+  classif.ranger.num.trees     = p_int(1000, 1400),
+  classif.ranger.mtry          = p_int(lower = 3, upper = 4),
+  classif.ranger.max.depth     = p_int(60, 90),
+  classif.ranger.min.node.size = p_int(6, 12),
+  classif.ranger.sample.fraction = p_dbl(0.94, 0.99)
 )
 
 # === AutoTuner ===
