@@ -25,6 +25,7 @@ Below are the **instructions to reproduce** our results.
 
 4. **Tuning** (see `tuning/`)
    - `*_tuning.R` — tunes **CatBoost**, **XGBoost**, and **Ranger** on the imputed-enhanced dataset and saves the tuning archive and the top-10 parameter sets.
+   - ` convergence_plot.R` visualize the tuning archive of ranger-mbo and XGB-mbo.
 
 5. **Submissions for base models** (see `baseline_submitted/`)
    - Files ending with `_s.R` — output submission files for **non-tuned** models.
