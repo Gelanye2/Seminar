@@ -11,38 +11,38 @@ train_all <- readRDS("data/data_all.rds") %>%
 # --- Check redundancy between categorical columns ---
 
 # water_quality vs. quality_group
-train_all %>% 
-  select(water_quality, quality_group) %>% 
+train_all %>%
+  select(water_quality, quality_group) %>%
   distinct()
 
 # payment vs. payment_type
-train_all %>% 
-  select(payment, payment_type) %>% 
+train_all %>%
+  select(payment, payment_type) %>%
   distinct()
 
 # quantity vs. quantity_group
-train_all %>% 
-  select(quantity, quantity_group) %>% 
+train_all %>%
+  select(quantity, quantity_group) %>%
   distinct()
 
 # extraction_type, extraction_type_group, extraction_type_class
-train_all %>% 
-  select(extraction_type, extraction_type_group, extraction_type_class) %>% 
+train_all %>%
+  select(extraction_type, extraction_type_group, extraction_type_class) %>%
   distinct()
 
 # management vs. management_group
-train_all %>% 
-  select(management, management_group) %>% 
+train_all %>%
+  select(management, management_group) %>%
   distinct()
 
 # source, source_type, source_class
-train_all %>% 
-  select(source, source_type, source_class) %>% 
+train_all %>%
+  select(source, source_type, source_class) %>%
   distinct()
 
 # waterpoint_type vs. waterpoint_type_group
-train_all %>% 
-  select(waterpoint_type, waterpoint_type_group) %>% 
+train_all %>%
+  select(waterpoint_type, waterpoint_type_group) %>%
   distinct()
 
 # Frequency counts for extraction categories

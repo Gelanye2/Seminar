@@ -3,10 +3,10 @@
 # Setup
 source("setup.R")
 
-library(leaflet)   
-library(dplyr)    
-library(sf)       
-library(ggplot2)   
+library(leaflet)
+library(dplyr)
+library(sf)
+library(ggplot2)
 
 # Load data
 data_all  <- readRDS("data/data_all.rds")
@@ -30,7 +30,7 @@ leaflet(data_all) %>%
   addCircleMarkers(
     lng = ~longitude,
     lat = ~latitude,
-    radius = 2,            
+    radius = 2,
     stroke = FALSE,
     fillOpacity = 0.6,
     color = "blue"
@@ -39,9 +39,9 @@ leaflet(data_all) %>%
 # Distribution of target variable
 # Keep consistent color mapping across plots
 status_colors <- c(
-  "functional"              = "#377eb8",            
+  "functional"              = "#377eb8",
   "functional needs repair" = "#ff7f00",
-  "non functional"          = "#984ea3"          
+  "non functional"          = "#984ea3"
 )
 
 train_all %>%
@@ -49,7 +49,7 @@ train_all %>%
   mutate(
     percent      = n / sum(n) * 100,
     status_group = factor(
-      status_group, 
+      status_group,
       levels = c("functional", "functional needs repair", "non functional")
     )
   ) %>%
@@ -58,7 +58,7 @@ train_all %>%
   geom_text(
     aes(label = paste0(round(percent, 1), "%")),
     vjust = -0.4, size = 4.5
-  ) +  
+  ) +
   scale_fill_manual(values = status_colors) +
   labs(
     x    = NULL,
