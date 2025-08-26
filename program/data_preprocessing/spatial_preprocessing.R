@@ -1,27 +1,5 @@
 # ####contributed by: Haoran Ju
-# ###Do Moran's test to test autocorrelation of residuals
-# train_all_clean <- readRDS("data/fi_clean.rds") %>%
-#   filter(dataset == "train")
-# train_model <- train_all_clean %>%
-#   select(-lga, -ward, -subvillage,-district_code, -region,-dataset, -month_recorded
-#          ,-region_district,-region_code) %>%
-#   mutate(population = ifelse(population == 0, NA, population))
-#
-# train <- train_model %>%
-#   filter(longitude != 0, latitude != 0)
-#
-# train$status_numeric <- as.numeric(factor(train$status_group))
-#
-# model <- ranger(status_numeric ~ ., data = train)
-# train$residual <- model$predictions - train$status_numeric
-#
-# coords <- cbind(train$longitude, train$latitude)
-# nb <- knn2nb(knearneigh(coords, k = 8))
-# lw <- nb2listw(nb, style = "W")
-# moran_test <- moran.test(train$residual, listw = lw) ####no need for spatial modeling
-# print(moran_test) #no need for spatial modeling
-# # Moran's I for XGBoost residuals
-# # Moran's I for LM residuals
+source("setup.R")
 #population_buffer
 data_all_clean <- readRDS("data/fi_clean_year.rds")
 data_all_clean <- data_all_clean %>%

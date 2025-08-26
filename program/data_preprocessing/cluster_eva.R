@@ -1,3 +1,5 @@
+###contributed by: Haoran Ju
+
 library(purrr)
 library(cluster)
 set.seed(1)
@@ -12,7 +14,7 @@ labs <- df$location_cluster2
 
 
 # ------- Single sampling -------
-n_sample <- 10000                       # Subsample size (adjustable, e.g., 5000–20000)
+n_sample <- 10000                       # Subsample size
 idx      <- sample(nrow(X), n_sample)   # Random indices
 X_sub    <- scale(X[idx, ])             # Standardize
 labs_sub <- as.integer(labs[idx])       # Convert labels to integers if factor/character

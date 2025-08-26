@@ -1,3 +1,5 @@
+###contributed by:Yuxin Liu, Haoran Ju
+
 .libPaths("/dss/dsshome1/01/ra59qow2/R/x86_64-pc-linux-gnu-library/4.3")
 library(dplyr)
 library(mlr3)
@@ -69,7 +71,11 @@ graph <- po_latlon_na %>>%
   po_char2fac %>>%
   po("removeconstants") %>>%
   po("encode", method = "treatment") %>>%
-  lrn("classif.xgboost", predict_type = "prob",nthread = 7)
+  lrn("classif.lightgbm",
+      predict_type       = "response",
+      objective    = "multiclass",
+      num_threads           = 7
+  )
 
 
 base_lrn <- GraphLearner$new(graph)
@@ -101,5 +107,5 @@ result_imp <- data.frame(
   stringsAsFactors = FALSE
 )
 
-saveRDS(result_imp, "data/xgb_base_result.rds")
-write.csv(result_imp, "result/subxgb_base_l.csv", row.names = FALSE)
+saveRDS(result_imp, "data/lgb_base_result.rds")
+write.csv(result_imp, "result/sublgb_base_l.csv", row.names = FALSE)

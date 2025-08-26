@@ -1,3 +1,5 @@
+###contributed by: Gelan Ye, Haoran Ju
+
 .libPaths("/dss/dsshome1/01/ra59qow2/R/x86_64-pc-linux-gnu-library/4.3")
 library(mlr3)
 library(mlr3learners)
@@ -23,12 +25,12 @@ to_factor <- function(df) {
 enhanced <- to_factor(enhanced)
 regular  <- to_factor(regular)
 
+
 #create tasks
 task_enhanced <- TaskClassif$new(id = "enhanced_imputed", backend = enhanced, target = "status_group")
 task_regular  <- TaskClassif$new(id = "regular_imputed",  backend = regular,  target = "status_group")
 
-
-graph <- po("imputemedian") %>>% po("imputemode") %>>%  lrn("classif.ranger", predict_type = "prob", num.threads = 7)
+graph <- po("imputemode") %>>% po("imputemedian") %>>% po("encode", method = "treatment")%>>% lrn("classif.kknn", predict_type = "prob")
 
 glrn <- GraphLearner$new(graph)
 
@@ -46,5 +48,4 @@ bmr <- benchmark(design)
 
 #save doc
 agg <- bmr$aggregate(msrs(c("classif.acc", "classif.bacc")))
-saveRDS(agg, "result/bs_imp_rf.rds")
-
+saveRDS(agg, "result/bs_imp_knn.rds")

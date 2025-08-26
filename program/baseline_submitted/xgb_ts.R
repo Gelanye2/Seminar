@@ -1,3 +1,5 @@
+###contributed by:Yuxin Liu, Haoran Ju
+
 .libPaths("/dss/dsshome1/01/ra59qow2/R/x86_64-pc-linux-gnu-library/4.3")
 library(dplyr)
 library(mlr3)
@@ -6,23 +8,20 @@ library(mlr3pipelines)
 library(mlr3tuning)
 library(mlr3filters)
 library(mlr3measures)
-library(mlr3extralearners)
 library(paradox)
 library(data.table)
 library(xgboost)
-library(future)
-plan(multisession, workers = 16)
 set.seed(7832)
 
 fi_clean <- readRDS("data/fi_clean.rds") # no imp and all
-imputed <- readRDS("data/data_imputed_enhanced.rds") # all:train + test
-# sub_imputed <- readRDS ("data/sub_imputed.rds") # train+noll test
+imputed <- readRDS("data/data_imputed.rds") # all:train + test
+# sub_imputed <- readRDS("data/sub_imputed.rds") # train+noll test
 test_full_imp <- readRDS("data/test_full_imp.rds")
 test_all <- readRDS("data/test_all.rds")
 
 df_imp <<- imputed
 train_imp <- df_imp %>% filter(!is.na(status_group))
-test_imp  <<- df_imp %>% filter(is.na(status_group))
+test_imp  <<- test_full_imp
 test_imp$status_group <- factor(NA, levels = levels(train_imp$status_group))
 
 # mlr3 task on the training set
@@ -69,7 +68,19 @@ graph <- po_latlon_na %>>%
   po_char2fac %>>%
   po("removeconstants") %>>%
   po("encode", method = "treatment") %>>%
-  lrn("classif.kknn", predict_type = "prob")
+  lrn("classif.xgboost",
+      predict_type       = "response",
+      nthread            = 8L,
+      nrounds            = 482,
+      eta                = exp(-3.007022),
+      max_depth          = 13,
+      subsample          = 0.8931599,
+      colsample_bytree   = 0.7244709,
+      gamma              = 0.09409377,
+      lambda             = exp(0.2757714),
+      alpha              = exp(-3.815309),
+      min_child_weight   = 1.109858
+  )
 
 
 base_lrn <- GraphLearner$new(graph)
@@ -79,9 +90,9 @@ resampling <- rsmp("cv", folds = 3)
 rr_fi <- mlr3::resample(task_fi, base_lrn, resampling, store_models = FALSE)
 
 # Aggregate CV accuracy
-rr_fi$aggregate(msr("classif.acc"))
-rr_fi$aggregate(msr("classif.bacc"))
-# cat("XGBoost 5-fold CV Accuracy:", acc_5cv, "\n")
+rr_fi$aggregate(msr("classif.acc")) #0.8017056
+rr_fi$aggregate(msr("classif.bacc")) #0.6513737
+# cat("XGBoost 5-fold CV Accuracy:", acc_5cv, "\n") #0.7841955
 
 # test prediction
 base_lrn$train(task_fi)
@@ -101,5 +112,5 @@ result_imp <- data.frame(
   stringsAsFactors = FALSE
 )
 
-saveRDS(result_imp, "data/knn_base_result.rds")
-write.csv(result_imp, "result/subknn_base_l.csv", row.names = FALSE)
+saveRDS(result_imp, "data/predictions_with_imp3.rds")
+write.csv(result_imp, "subxg_new4.csv", row.names = FALSE)

@@ -1,3 +1,5 @@
+###contributed by: Yuxin Liu
+
 source("setup.R")
 
 data_all_clean <- readRDS("data/data_all_clean.rds")
@@ -6,18 +8,18 @@ data_clean <- data_all_clean %>%
 
 # --- Clean individual entries ----
 clean_func <- function(x) {
-  
+
   # Trim whitespace, convert to lowercase, and coerce to character
   x <- trimws(tolower(as.character(x)))
-  
+
   # Identify missing-like values and set them to NA
   is_missing   <- x %in% c("", " ", "na", "null", "none", "n/a") | is.na(x)
   x[is_missing] <- NA
-  
+
   # Identify unknown-like values and standardize to "unknown"
   is_unknown   <- x %in% c("unknown", "not known", "_unknown", "0")
-  x[is_unknown] <- "unknown" 
-  
+  x[is_unknown] <- "unknown"
+
   return(x)
 }
 
@@ -39,7 +41,7 @@ evaluate_string_clustering <- function(string_vec, thresholds = seq(0.05, 0.5, b
 
   # Compute string distance matrix
   # Jaro–Winkler distance
-  dist_mat <- stringdistmatrix(unique_vals, unique_vals, method = "jw") 
+  dist_mat <- stringdistmatrix(unique_vals, unique_vals, method = "jw")
   dist_obj <- as.dist(dist_mat)
 
   # Perform hierarchical clustering
@@ -168,8 +170,8 @@ group_similar_categories <- function(data, column, sim_threshold = 0.2, new_col 
   cluster_dt[, representative := first(original), by = group]
 
   # Merge representative values back into the original data
-  # .__tmp_cleaned holds the cleaned original values, 
-  # while representative stores the matched cluster representatives; 
+  # .__tmp_cleaned holds the cleaned original values,
+  # while representative stores the matched cluster representatives;
   # they are linked via a merge to form a mapping from original to representative strings.
   data$.__tmp_cleaned <- col_vec
   replace_map <- cluster_dt[, .(original, representative)]
@@ -298,19 +300,19 @@ group_rare <- function(x, target_prop = 0.1, other_label = "other") {
   x_char <- as.character(x)
   total_count <- length(x_char)
   target_count <- total_count * target_prop
-  
+
   # Frequency table (ascending by default)
   freq_tab <- sort(table(x_char))
-  
+
   # Cumulative sum of frequencies
   cum_freq <- cumsum(freq_tab)
-  
+
   # Identify levels to lump into 'Other'
   rare_levels <- names(freq_tab)[cum_freq <= target_count]
-  
+
   # Recode rare levels
   x_recoded <- ifelse(x_char %in% rare_levels, other_label, x_char)
-  
+
   # Return as factor, with 'Other' as the first level
   levels_final <- c(other_label, sort(unique(setdiff(x_recoded, other_label))))
   factor(x_recoded, levels = levels_final)

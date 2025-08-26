@@ -1,3 +1,5 @@
+###contributed by: Gelan Ye, Haoran Ju
+
 # source("setup.R")
 .libPaths("/dss/dsshome1/01/ra59qow2/R/x86_64-pc-linux-gnu-library/4.3")
 library(dplyr)
@@ -39,11 +41,11 @@ glrn <- GraphLearner$new(graph)
 
 # === Suchraum für Tuning ===
 param_set <- ps(
-  classif.ranger.num.trees     = p_int(300, 1500),
-  classif.ranger.mtry          = p_int(lower = 3, upper = floor(sqrt(ncol(train) - 1))),
-  classif.ranger.max.depth     = p_int(5, 100),
-  classif.ranger.min.node.size = p_int(1, 20),
-  classif.ranger.sample.fraction = p_dbl(0.3, 1.0)
+  classif.ranger.num.trees     = p_int(1000, 1400),
+  classif.ranger.mtry          = p_int(lower = 3, upper = 4),
+  classif.ranger.max.depth     = p_int(60, 90),
+  classif.ranger.min.node.size = p_int(6, 12),
+  classif.ranger.sample.fraction = p_dbl(0.94, 0.99)
 )
 
 # === AutoTuner ===
@@ -52,21 +54,21 @@ at_ranger <- AutoTuner$new(
   resampling  = rsmp("cv", folds = 3),
   measure     = msr("classif.acc"),
   terminator  = trm("evals", n_evals = 500),
-  tuner       = tnr("random_search"),
+  tuner       = tnr("mbo"),
   search_space = param_set
 )
 
 at_ranger$train(task_imp)
 
 best_params <- at_ranger$learner$param_set$values
-saveRDS(best_params, file = "result/ranger_tuning_params_new_rs.rds")
-saveRDS(at_ranger$learner, file = "result/ranger_tuning_model_l_rs.rds")
-saveRDS(at_ranger$archive, file = "result/ranger_tuning_archive_l_rs.rds")
+saveRDS(best_params, file = "result/ranger_tuning_params_new.rds")
+saveRDS(at_ranger$learner, file = "result/ranger_tuning_model_l.rds")
+saveRDS(at_ranger$archive, file = "result/ranger_tuning_archive_l.rds")
 
-archive <- readRDS("result/ranger_tuning_archive_l_rs.rds")
+archive <- readRDS("result/ranger_tuning_archive_l.rds")
 dt <- as.data.table(archive)
 top10 <- dt[order(-classif.acc)][1:10]
 
 top10_params <- top10[, archive$search_space$ids(), with = FALSE]
 
-saveRDS(top10_params, "result/top10_ranger_params_rs.rds")
+saveRDS(top10_params, "result/top10_ranger_params.rds")

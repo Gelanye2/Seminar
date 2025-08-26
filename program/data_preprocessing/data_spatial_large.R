@@ -1,3 +1,5 @@
+###contributed by:Haoran Ju
+source("setup.R")
 #find data_enhanced
 data_enhanced <- readRDS("data/data_all_spatial0.RDS") %>%
   select(-population_500, -location_cluster, -year_recorded, -dataset) %>%

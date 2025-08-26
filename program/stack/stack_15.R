@@ -151,20 +151,19 @@ glmnet_base <- as_learner(
 glmnet_base$id <- "glmnet.lasso"
 
 catboost_tuned <- lrn("classif.catboost",
-    predict_type = "prob",
-    thread_count = 7,
-    learning_rate = 0.11548602,
-    depth = 10,
-    l2_leaf_reg = 4.021390,
-    rsm = 0.8162192,
-    random_strength = 16.579515,
-    bagging_temperature = 0.3254960,
-    iterations = 784)
+                      predict_type = "prob",
+                      thread_count = 7,
+                      learning_rate = 0.11548602,
+                      depth = 10,
+                      l2_leaf_reg = 4.021390,
+                      rsm = 0.8162192,
+                      random_strength = 16.579515,
+                      bagging_temperature = 0.3254960,
+                      iterations = 784)
 catboost_tuned$id <- "catboost.tuned"
 
 
-base_learners <- list(xgb_base, xgb_tuned, ranger_base, ranger_tuned,
-                      lightgbm_base, kknn_base, catboost_base, catboost_tuned)
+base_learners <- list(xgb_base, xgb_tuned, ranger_base, ranger_tuned)
 
 
 # --- MODEL : Stacking with Multinom Super Learner ---
@@ -176,7 +175,7 @@ super_multinom <- lrn("classif.multinom", predict_type = "prob", MaxNWts = 5000)
 final_learner <- as_learner(
   ppl("stacking",
       base_learners = base_learners,
-      super_learner = super_multinom,
+      super_learner = ranger_base,
       method = "cv",
       folds = 5,
       use_features = FALSE
@@ -205,6 +204,5 @@ result_stacking <- data.frame(
   status_group = final_predictions$response,
   stringsAsFactors = FALSE
 )
-write.csv(result_stacking, "result/submission_stacking_multinom8.csv", row.names = FALSE)
+write.csv(result_stacking, "result/submission_method_A_enhance.csv", row.names = FALSE)
 print("Submission file 'submission_stacking_multinom.csv' has been generated.")
-saveRDS(final_learner, "result/model_stacking_multinom8.rds")
