@@ -44,7 +44,7 @@ status_colors <- c(
   "non functional"          = "#984ea3"
 )
 
-train_all %>%
+target_plot <- train_all %>%
   count(status_group) %>%
   mutate(
     percent      = n / sum(n) * 100,
@@ -72,5 +72,5 @@ train_all %>%
     axis.text.x  = element_text(angle = 20, vjust = 0.8, hjust = 0.8),
     legend.position = "right"
   )
-
+ggsave("plot/status_distribution.png", plot = target_plot, width = 8, height = 6, dpi = 300)
 
