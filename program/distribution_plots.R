@@ -1,5 +1,7 @@
 library(ggplot2)
 
+data_all <- readRDS("data/data_all.rds")
+
 ###population
 # log1p: calculate log(population + 1)
 data_all$log_pop <- log1p(data_all$population)
@@ -12,12 +14,7 @@ med_raw <- exp(med_log) - 1
 ggplot(data_all, aes(x = log_pop)) +
   geom_histogram(bins = 50, fill = "skyblue", color = "black") +
   geom_vline(xintercept = med_log, color = "red", size = 1) +
-  annotate("text", x = med_log + 0.2, y = 20000,
-           label = paste0("Median: ", round(med_log, 3),
-                          " (logscale) or ", round(med_raw)),
-           color = "red", hjust = 0) +
-  labs(title = "Population (log scale + 1) Feature",
-       x = "Population", y = "Count") +
+  labs(x = "Population", y = "Count") +
   theme_minimal()
 
 ggsave("plot/population_log_histogram.png", width = 8, height = 6)
@@ -42,5 +39,7 @@ ggplot(data_all, aes(x = log_tsh)) +
            color = "red", hjust = 0) +
   labs(title = "Amount TSH (log scale + 1)",
        x = "log(amount_tsh + 1)",
-       y = "Count")
+       y = "Count") +
+  theme_minimal()
 
+ggsave("plot/tsh_log_histogram.png", width = 8, height = 6)

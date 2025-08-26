@@ -1,62 +1,61 @@
-##########spatial cleaning
-###Contributed by: Haoran Ju
-source("setup.R")
-set.seed(7832)
-###Contributed by: Haoran Ju, Gelan Ye
+# ========================================================
+# Data Cleaning
+# Contributed by: Haoran Ju, Yuxin Liu, Gelan Ye
+# ========================================================
 
+source("setup.R")
+
+# Load Raw Data
 data_all <- readRDS("data/data_all.rds")
 
-###initial reason for imputing coordinates
+# Step 1: Check Coordinate Outliers
+# How many entries have missing or zero coordinates
 outliers <- data_all %>%
   filter(longitude == 0 | latitude == 0) %>%
-  select(id, longitude, latitude, dataset)  %>%
   nrow()
-
+# How many are in the training data
 train_all <- data_all %>% filter(dataset == "train")
 outliers_train <- train_all %>%
   filter(longitude == 0 | latitude == 0) %>%
-  select(id, longitude, latitude, dataset) %>%
   nrow()
-outliers_train/nrow(train_all)  #0.03
 
+outliers_train / nrow(train_all)  # ≈ 3%
 
-###reflection of region to region code: many to many
-# if one region_code corresponds to multiple regions
+# Step 2: Check Region/Region_Code Mapping (Many-to-Many)
+# Region_code → multiple regions?
 data_all %>%
   group_by(region_code) %>%
   summarise(n_region = n_distinct(region)) %>%
   filter(n_region > 1)
 
-# if one region corresponds to multiple region_codes
+# Region → multiple region_codes?
 data_all %>%
   group_by(region) %>%
   summarise(n_code = n_distinct(region_code)) %>%
   filter(n_code > 1)
-#view the elationship in table
-table<- data_all %>%
+
+# Full mapping table
+table <- data_all %>%
   group_by(region_code, region) %>%
   tally()
 
-
-###modify region_code, one to one reflection
+# Step 3: One-to-One Region Mapping
 region_name_map <- data_all %>%
   distinct(region) %>%
   arrange(region) %>%
   mutate(region_code_new = row_number())
+
 data_all_clean <- data_all %>%
   left_join(region_name_map, by = "region") %>%
   mutate(region_code = region_code_new) %>%
   select(-region_code_new)
 
-data_all_clean %>%
-  count(district_code) %>%
-  arrange(desc(n))
-
-###if region_district is a reasonable combination for later processing - yes
+# Create unique identifier: region_district
 data_all_clean <- data_all_clean %>%
   mutate(region_district = paste(region_code, district_code, sep = "_")) %>%
   relocate(region_district, .after = district_code)
 
+# Overview of each region_district
 region_district_summary <- data_all_clean %>%
   group_by(region_district) %>%
   summarise(
@@ -66,8 +65,10 @@ region_district_summary <- data_all_clean %>%
   ) %>%
   arrange(desc(n_ward))
 
+# Step 4: Visualize Sample Region (Many Wards)
 world <- ne_countries(scale = "medium", returnclass = "sf")
 tanzania <- world %>% filter(admin == "United Republic of Tanzania")
+
 data_sf <- st_as_sf(data_all_clean, coords = c("longitude", "latitude"), crs = 4326)
 
 data_sf %>%
@@ -78,18 +79,16 @@ data_sf %>%
   theme_minimal() +
   labs(title = "Distribution in region_district with most wards")
 
-### check outliers in region_district: missing coordinates are concentrated,
-### imputation not possible
+# Step 5: Check Missing Coordinates
+# These are highly concentrated → not suitable for imputation
 table_outliers <- data_all_clean %>%
   filter(latitude == -2e-08 & longitude == 0) %>%
   count(lga) %>%
   arrange(desc(n))
 
-###conclusion: decision for main model + submodel(only region 14 +18)
+# → Decision: Train submodels only for region_districts 14 + 18
 
-
-###cleaning other columns
-#contributed by Yuxin Liu
+# Step 6: Clean/Transform Columns (Yuxin Liu)
 data_all_clean <- data_all_clean %>%
   mutate(
     year_recorded = as.integer(format(date_recorded, "%Y")),
@@ -98,9 +97,7 @@ data_all_clean <- data_all_clean %>%
   ) %>%
   select(-date_recorded)
 
-# years_in_use (year_recorded - construction_year)
-# delete construction_year and day_recorded
-# keep month_recorded
+# Years in use (remove invalid years)
 data_all_clean <- data_all_clean %>%
   mutate(
     construction_year = na_if(construction_year, 0),
@@ -111,67 +108,48 @@ data_all_clean <- data_all_clean %>%
     )
   )
 
+# Management cleaning
 data_all_clean <- data_all_clean %>%
   mutate(
     management_other = case_when(
       str_detect(management, regex("^other - ", ignore_case = TRUE)) ~
         str_remove(management, regex("^other - ", ignore_case = TRUE)),
       TRUE ~ management
-    )
-  ) %>%
-  mutate(
+    ),
     source_group = if_else(source == "unknown", "other", as.character(source))
-  ) %>%
+  )
+
+# Rain season categorization
+data_all_clean <- data_all_clean %>%
   mutate(
     rainy_season4 = case_when(
       month_recorded %in% 1:2        ~ "dry short",
-      month_recorded %in% 3:5         ~ "wet long",
-      month_recorded %in% 6:9         ~ "dry long",
-      month_recorded %in% 10:12       ~ "wet short"
+      month_recorded %in% 3:5        ~ "wet long",
+      month_recorded %in% 6:9        ~ "dry long",
+      month_recorded %in% 10:12      ~ "wet short"
     )
   )
 
-data_all_clean <- data_all_clean %>% select(-id, -quantity_group, 
-                                           -recorded_by, -amount_tsh,
-                                           -wpt_name, -num_private,
-                                           -subvillage, -ward, -region, 
-                                           -district_code, -ward, -lga, 
-                                           -region_code, -extraction_type_class,
-                                           -extraction_type, -management,
-                                           -management_group, -scheme_management,
-                                           -payment, -quality_group, -source, 
-                                           -source_type, -source_class,
-                                           -waterpoint_type_group,
-                                           -month_recorded, -construction_year)
-
-#data_all_clean <- data_all_clean %>% select(-id, -quantity_group, 
- #                                           -recorded_by, -amount_tsh,
-  #                                          -wpt_name, num_private,
-   #                                         -subvillage, -ward, -region, 
-    #                                        -district_code, -subvillage, -ward, 
-     #                                       -region_code, -extraction_type_class,
-      #                                      -extraction_type, 
-       #                                     -scheme_management,
-        #                                    -quality_group, 
-         #                                   -waterpoint_type_group)
-
-
-# keep only gps height > 0
+# Drop irrelevant/redundant columns
 data_all_clean <- data_all_clean %>%
-  mutate(gps_height = ifelse(gps_height <= 0, NA, gps_height))
+  select(-id, -quantity_group, -recorded_by, -amount_tsh,
+         -wpt_name, -num_private, -subvillage, -ward, -region,
+         -district_code, -lga, -region_code, -extraction_type_class,
+         -extraction_type, -management, -management_group,
+         -scheme_management, -payment, -quality_group,
+         -source, -source_type, -source_class,
+         -waterpoint_type_group, -month_recorded, -construction_year)
 
+# Step 7: Train/Test Split and De-duplicate (Gelan Ye)
 train_all_clean <- data_all_clean %>% filter(dataset == "train")
 
-###### Clean the duplicate rows
-## for train dataset
-# 1. Identify all duplicate coordinates in original data
+# -- De-duplicate training coordinates --
 duplicates_raw <- train_all_clean %>%
   filter(longitude != 0 & latitude != 0) %>%
   group_by(longitude, latitude) %>%
   filter(n() > 1) %>%
   ungroup()
 
-# 2. Clean
 duplicates_cleaned <- duplicates_raw %>%
   distinct() %>%
   group_by(longitude, latitude) %>%
@@ -179,20 +157,14 @@ duplicates_cleaned <- duplicates_raw %>%
   filter(!(n() > 1 & is.na(permit))) %>%
   ungroup()
 
-# 3. Remove all duplicated coordinate rows from original
 train_all_clean <- train_all_clean %>%
-  anti_join(duplicates_raw, by = c("longitude", "latitude"))
+  anti_join(duplicates_raw, by = c("longitude", "latitude")) %>%
+  bind_rows(duplicates_cleaned)
 
-# 4. Add back the cleaned version
-train_all_clean <- bind_rows(train_all_clean, duplicates_cleaned)
-
-## for test dataset
-test_all_clean <- data_all_clean %>% filter(dataset == "test")
-# Add row index to identify original rows
-test_all_clean <- test_all_clean %>%
+# -- Test set duplicates --
+test_all_clean <- data_all_clean %>% filter(dataset == "test") %>%
   mutate(row_index = row_number())
 
-# Find duplicated rows (by coordinates)
 duplicates_raw_test <- test_all_clean %>%
   filter(longitude != 0 & latitude != 0) %>%
   group_by(longitude, latitude) %>%
@@ -200,21 +172,20 @@ duplicates_raw_test <- test_all_clean %>%
   ungroup() %>%
   arrange(longitude, latitude)
 
-# replace row 1 with row 2, and row 8 with row 7
+# Manual replacement for known duplicated pairs
 row1_index <- duplicates_raw_test$row_index[1]
 row2_index <- duplicates_raw_test$row_index[2]
 row7_index <- duplicates_raw_test$row_index[7]
 row8_index <- duplicates_raw_test$row_index[8]
 
-# Overwrite in the original dataset using row_index
 test_all_clean[row1_index, ] <- test_all_clean[row2_index, ]
 test_all_clean[row8_index, ] <- test_all_clean[row7_index, ]
-test_all_clean <- test_all_clean %>%
-  select(-row_index)  # Remove the row_index column
+test_all_clean <- test_all_clean %>% select(-row_index)
 
+# Merge datasets back
 data_all_clean <- bind_rows(train_all_clean, test_all_clean)
 
-######save the cleaned dataset
+# Step 8: Save Cleaned Data
 saveRDS(data_all_clean, "data/data_all_clean.rds")
 saveRDS(train_all_clean, "data/train_all_clean.rds")
 saveRDS(test_all_clean, "data/test_all_clean.rds")

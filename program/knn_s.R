@@ -6,15 +6,18 @@ library(mlr3pipelines)
 library(mlr3tuning)
 library(mlr3filters)
 library(mlr3measures)
+library(mlr3extralearners)
 library(paradox)
 library(data.table)
 library(xgboost)
 library(future)
-
-plan(multisession, workers =16)
+plan(multisession, workers = 16)
 set.seed(7832)
 
-imputed <- readRDS("data/data_imputed.rds") # all:train + test
+fi_clean <- readRDS("data/fi_clean.rds") # no imp and all
+imputed <- readRDS("data/data_imputed_enhanced.rds") # all:train + test
+# sub_imputed <- readRDS ("data/sub_imputed.rds") # train+noll test
+test_full_imp <- readRDS("data/test_full_imp.rds")
 test_all <- readRDS("data/test_all.rds")
 
 df_imp <<- imputed
@@ -60,22 +63,13 @@ po_char2fac <- po("colapply", id = "char2factor",
                     affect_columns = selector_type("character")
                   ))
 
-graph <- po_char2fac %>>%
+graph <- po_latlon_na %>>%
+  po_latlon_flag %>>%
+  po_latlon_impute %>>%
+  po_char2fac %>>%
   po("removeconstants") %>>%
   po("encode", method = "treatment") %>>%
-  lrn("classif.xgboost",
-      predict_type       = "response",
-      nthread            = 7L,
-      nrounds            = 410,
-      eta                = exp(-3.531558),
-      max_depth          = 16,
-      subsample          = 0.9239334,
-      colsample_bytree   = 0.7408839,
-      gamma              = 0.03062037,
-      lambda             = exp(1.37803779),
-      alpha              = exp(-3.549950),
-      min_child_weight   = 2.005118
-  )
+  lrn("classif.kknn", predict_type = "prob")
 
 
 base_lrn <- GraphLearner$new(graph)
@@ -107,4 +101,5 @@ result_imp <- data.frame(
   stringsAsFactors = FALSE
 )
 
-write.csv(result_imp, "subxgl_2.csv", row.names = FALSE)
+saveRDS(result_imp, "data/knn_base_result.rds")
+write.csv(result_imp, "result/subknn_base_l.csv", row.names = FALSE)
