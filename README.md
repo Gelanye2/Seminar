@@ -35,3 +35,7 @@ Below are the **instructions to reproduce** our results.
 
 7. **Cascaded modeling** (see `cascaded/`)
    - Contains our design and code to **reproduce** the cascading modeling approach.
+
+8.**Additions**(see `additions/`) These scripts are not useful for our final report, but might provide additional insights
+   - `Imputation_*.R` conducted a benchmark study of how different imputation affect the model performance
+   -  `PFI_.R` apply Permutation Feature Importance on the stack model for explanability. But due to lack of computational resources, the script will have an time error.
