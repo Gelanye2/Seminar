@@ -16,6 +16,7 @@ Below are the **instructions to reproduce** our results.
    - `spatial_preprocessing.R` — adds spatially enhanced features.
    - `data_spatial_large.R` — creates the enhanced dataset.
    - `cluster_eva.R` — evaluates the silhouette score of the spatial clusters.
+   - `toy_example.R` — visualize a toy example of how the external population estimates is extrapolated.
 
 3. **Baselines** (see `baseline/`)
    - `bs_non_imp.R` — evaluates baseline models on the non-imputed dataset.
